@@ -18,6 +18,7 @@ RUN composer install --no-scripts --no-autoloader --no-interaction
 
 COPY . .
 RUN composer dump-autoload --optimize
+RUN chmod 644 config/jwt/private.pem config/jwt/public.pem
 
 EXPOSE 9000
 CMD ["php-fpm"]
