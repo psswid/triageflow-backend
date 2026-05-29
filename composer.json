@@ -21,6 +21,7 @@
         "symfony/monolog-bundle": "*",
         "symfony/runtime": "7.4.*",
         "symfony/scheduler": "7.4.*",
+        "symfony/uid": "7.4.*",
         "symfony/yaml": "7.4.*"
     },
     "config": {
