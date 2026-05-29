@@ -8,22 +8,29 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class AuthControllerTest extends WebTestCase
 {
+    private function uniqueEmail(): string
+    {
+        return 'auth-test-' . \uniqid() . '@example.com';
+    }
+
     public function testLoginSuccessReturnsToken(): void
     {
         $client = static::createClient();
+        $email = $this->uniqueEmail();
+        $password = 'SecurePass123!';
 
         // Register first
         $client->jsonRequest('POST', '/api/register', [
-            'email' => 'auth-test@example.com',
-            'password' => 'SecurePass123!',
+            'email' => $email,
+            'password' => $password,
         ]);
 
         $this->assertResponseStatusCodeSame(201);
 
         // Login
         $client->jsonRequest('POST', '/api/login', [
-            'email' => 'auth-test@example.com',
-            'password' => 'SecurePass123!',
+            'email' => $email,
+            'password' => $password,
         ]);
 
         $this->assertResponseStatusCodeSame(200);
@@ -36,7 +43,7 @@ final class AuthControllerTest extends WebTestCase
     {
         $client = static::createClient();
         $client->jsonRequest('POST', '/api/login', [
-            'email' => 'nonexistent@example.com',
+            'email' => 'nonexistent-' . \uniqid() . '@example.com',
             'password' => 'wrong',
         ]);
 
@@ -46,12 +53,8 @@ final class AuthControllerTest extends WebTestCase
     public function testProtectedEndpointRequiresAuth(): void
     {
         $client = static::createClient();
-        // Note: No triage routes exist yet (Issue #3+). Use /api/ with a non-matching
-        // path under the JWT-protected firewall. Router returns 404 before security
-        // if route missing, so this test is minimal until TriageController exists.
         $client->jsonRequest('GET', '/api/login');
 
-        // GET on login endpoint is not a valid login request; firewall rejects it
         $this->assertResponseStatusCodeSame(405);
     }
 }

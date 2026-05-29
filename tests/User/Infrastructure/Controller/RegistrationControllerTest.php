@@ -8,11 +8,17 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class RegistrationControllerTest extends WebTestCase
 {
+    private function uniqueEmail(): string
+    {
+        return 'reg-test-' . \uniqid() . '@example.com';
+    }
+
     public function testRegistrationSuccess(): void
     {
         $client = static::createClient();
+        $email = $this->uniqueEmail();
         $client->jsonRequest('POST', '/api/register', [
-            'email' => 'newuser@example.com',
+            'email' => $email,
             'password' => 'SecurePass123!',
         ]);
 
@@ -21,7 +27,7 @@ final class RegistrationControllerTest extends WebTestCase
         $this->assertArrayHasKey('data', $data);
         $this->assertArrayHasKey('id', $data['data']);
         $this->assertSame('user', $data['data']['type']);
-        $this->assertSame('newuser@example.com', $data['data']['attributes']['email']);
+        $this->assertSame($email, $data['data']['attributes']['email']);
         $this->assertContains('ROLE_USER', $data['data']['attributes']['roles']);
         $this->assertArrayHasKey('createdAt', $data['data']['attributes']);
     }
@@ -29,17 +35,18 @@ final class RegistrationControllerTest extends WebTestCase
     public function testRegistrationDuplicateEmail(): void
     {
         $client = static::createClient();
+        $email = $this->uniqueEmail();
 
         // First registration succeeds
         $client->jsonRequest('POST', '/api/register', [
-            'email' => 'dup@example.com',
+            'email' => $email,
             'password' => 'SecurePass123!',
         ]);
         $this->assertResponseStatusCodeSame(201);
 
         // Duplicate registration fails
         $client->jsonRequest('POST', '/api/register', [
-            'email' => 'dup@example.com',
+            'email' => $email,
             'password' => 'AnotherPass123!',
         ]);
         $this->assertResponseStatusCodeSame(422);
@@ -68,7 +75,7 @@ final class RegistrationControllerTest extends WebTestCase
     {
         $client = static::createClient();
         $client->jsonRequest('POST', '/api/register', [
-            'email' => 'test@example.com',
+            'email' => $this->uniqueEmail(),
             'password' => '123',
         ]);
 

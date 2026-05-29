@@ -20,7 +20,8 @@ final class DoctrineUserRepositoryTest extends KernelTestCase
 
     public function testSaveAndFindById(): void
     {
-        $user = User::register('findbyid@example.com', '$2y$13$hashedpassword');
+        $email = 'repo-test-' . \uniqid() . '@example.com';
+        $user = User::register($email, '$2y$13$hashedpassword');
 
         $this->repository->save($user);
 
@@ -31,7 +32,7 @@ final class DoctrineUserRepositoryTest extends KernelTestCase
 
     public function testFindByEmailReturnsEntity(): void
     {
-        $email = 'findbyemail@example.com';
+        $email = 'repo-test-' . \uniqid() . '@example.com';
         $user = User::register($email, '$2y$13$hashedpassword');
 
         $this->repository->save($user);
@@ -43,7 +44,7 @@ final class DoctrineUserRepositoryTest extends KernelTestCase
 
     public function testFindByEmailReturnsNullForNonExistent(): void
     {
-        $found = $this->repository->findByEmail('nonexistent@example.com');
+        $found = $this->repository->findByEmail('nonexistent-' . \uniqid() . '@example.com');
         $this->assertNull($found);
     }
 
