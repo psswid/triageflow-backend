@@ -1,0 +1,10 @@
+/.git
+/.env
+/.env.*
+/var
+/vendor
+/node_modules
+/docker
+/Dockerfile
+/docker-compose.yml
+/compose.override.yaml
