@@ -1,0 +1,78 @@
+services:
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: triageflow_php
+    volumes:
+      - .:/var/www
+      - ./var:/var/www/var
+    environment:
+      DATABASE_URL: "postgresql://triageflow:triageflow@db:5432/triageflow?serverVersion=16&charset=utf8"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - triageflow
+
+  nginx:
+    image: nginx:alpine
+    container_name: triageflow_nginx
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+    networks:
+      - triageflow
+
+  db:
+    image: postgres:16-alpine
+    container_name: triageflow_db
+    environment:
+      POSTGRES_DB: triageflow
+      POSTGRES_USER: triageflow
+      POSTGRES_PASSWORD: triageflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U triageflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - triageflow
+
+###> doctrine/doctrine-bundle ###
+  database:
+    image: postgres:${POSTGRES_VERSION:-16}-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+      # You should definitely change the password in production
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "${POSTGRES_DB:-app}", "-U", "${POSTGRES_USER:-app}"]
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - database_data:/var/lib/postgresql/data:rw
+      # You may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
+      # - ./docker/db/data:/var/lib/postgresql/data:rw
+###< doctrine/doctrine-bundle ###
+
+volumes:
+
+###> doctrine/doctrine-bundle ###
+  database_data:
+###< doctrine/doctrine-bundle ###
+  pgdata:
+
+networks:
+  triageflow:
+    name: triageflow_network
