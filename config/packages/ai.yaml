@@ -1,6 +1,12 @@
 # OpenRouter AI configuration for TriageFlow
 # Uses free models for portfolio demo — zero cost
 # https://openrouter.ai/docs
+#
+# ADR: Custom implementation, not symfony/ai-bundle
+# The symfony/ai-bundle package does not exist on Packagist as of 2026-05.
+# AI calls are handled via symfony/http-client directly, using these
+# parameters as configuration. Switch to the official bundle if it ships.
+# See ADR-0001 for model selection rationale.
 
 parameters:
     ai:
