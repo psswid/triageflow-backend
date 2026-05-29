@@ -12,14 +12,32 @@ doctrine:
         naming_strategy: doctrine.orm.naming_strategy.underscore
         identity_generation_preferences:
             Doctrine\DBAL\Platforms\PostgreSQLPlatform: identity
-        auto_mapping: true
+        auto_mapping: false
         mappings:
-            App:
+            Triage:
                 type: attribute
                 is_bundle: false
-                dir: '%kernel.project_dir%/src/Entity'
-                prefix: 'App\Entity'
-                alias: App
+                dir: '%kernel.project_dir%/src/Triage/Domain/Entity'
+                prefix: 'App\Triage\Domain\Entity'
+                alias: Triage
+            User:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/User/Domain/Entity'
+                prefix: 'App\User\Domain\Entity'
+                alias: User
+            Admin:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Admin/Domain/Entity'
+                prefix: 'App\Admin\Domain\Entity'
+                alias: Admin
+            Shared:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Shared/Domain/Entity'
+                prefix: 'App\Shared\Domain\Entity'
+                alias: Shared
 
 when@test:
     doctrine:
