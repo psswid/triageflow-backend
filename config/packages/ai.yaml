@@ -1,0 +1,14 @@
+# OpenRouter AI configuration for TriageFlow
+# Uses free models for portfolio demo — zero cost
+# https://openrouter.ai/docs
+
+parameters:
+    ai:
+        openrouter:
+            base_url: 'https://openrouter.ai/api/v1'
+            api_key: '%env(OPENROUTER_API_KEY)%'
+            default_model: 'google/gemma-4-31b-it:free'
+            fallback_model: 'meta-llama/llama-2-13b-chat:free'
+            timeout: 60
+            max_tokens: 1000
+            temperature: 0.7
