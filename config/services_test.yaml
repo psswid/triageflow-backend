@@ -1,0 +1,3 @@
+services:
+    App\Triage\Application\Service\TriageAnalyzerInterface:
+        alias: 'App\Tests\Triage\Infrastructure\Controller\TestTriageAnalyzer'

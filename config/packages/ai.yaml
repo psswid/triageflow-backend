@@ -4,17 +4,8 @@
 #
 # ADR: Custom implementation, not symfony/ai-bundle
 # The symfony/ai-bundle package does not exist on Packagist as of 2026-05.
-# AI calls are handled via symfony/http-client directly, using these
-# parameters as configuration. Switch to the official bundle if it ships.
+# AI calls are handled via symfony/http-client directly.
 # See ADR-0001 for model selection rationale.
-
-parameters:
-    ai:
-        openrouter:
-            base_url: 'https://openrouter.ai/api/v1'
-            api_key: '%env(OPENROUTER_API_KEY)%'
-            default_model: 'google/gemma-4-31b-it:free'
-            fallback_model: 'meta-llama/llama-2-13b-chat:free'
-            timeout: 60
-            max_tokens: 1000
-            temperature: 0.7
+#
+# NOTE: Parameters defined in config/services.yaml to avoid
+# container compilation issues with parameter resolution order.

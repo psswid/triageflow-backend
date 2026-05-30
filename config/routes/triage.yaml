@@ -1,0 +1,3 @@
+triage_routes:
+    resource: ../../src/Triage/Infrastructure/Controller/
+    type: attribute

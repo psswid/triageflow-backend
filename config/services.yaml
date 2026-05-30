@@ -7,6 +7,13 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    ai.openrouter.base_url: 'https://openrouter.ai/api/v1'
+    ai.openrouter.api_key: '%env(OPENROUTER_API_KEY)%'
+    ai.openrouter.default_model: 'google/gemma-4-31b-it:free'
+    ai.openrouter.fallback_model: 'openai/gpt-oss-120b:free'
+    ai.openrouter.timeout: 60
+    ai.openrouter.max_tokens: 1000
+    ai.openrouter.temperature: 0.7
 
 services:
     # default configuration for services in *this* file
@@ -22,5 +29,25 @@ services:
     App\User\Domain\Repository\UserRepository:
         alias: App\User\Infrastructure\Repository\DoctrineUserRepository
 
+    App\Triage\Domain\Repository\TriageSubmissionRepository:
+        alias: App\Triage\Infrastructure\Repository\DoctrineTriageSubmissionRepository
+
+    App\Shared\Infrastructure\Ai\OpenRouterClient:
+        arguments:
+            $baseUrl: '%ai.openrouter.base_url%'
+            $defaultModel: '%ai.openrouter.default_model%'
+            $fallbackModel: '%ai.openrouter.fallback_model%'
+            $apiKey: '%ai.openrouter.api_key%'
+            $timeout: '%ai.openrouter.timeout%'
+            $maxTokens: '%ai.openrouter.max_tokens%'
+            $temperature: '%ai.openrouter.temperature%'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
+
+when@test:
+    services:
+        App\Tests\Triage\Infrastructure\Controller\TestTriageAnalyzer: ~
+
+        App\Triage\Application\Service\TriageAnalyzerInterface:
+            alias: App\Tests\Triage\Infrastructure\Controller\TestTriageAnalyzer
