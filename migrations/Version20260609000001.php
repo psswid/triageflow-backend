@@ -7,6 +7,21 @@ namespace DoctrineMigrations;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;
 
+/**
+ * Seeds the system user that owns all synthetic triage submissions.
+ *
+ * Design decisions:
+ * - Password is intentionally empty — this user never authenticates.
+ *   Only scheduler tasks and admin handlers impersonate via the entity
+ *   reference, never via login. The User entity implements
+ *   PasswordAuthenticatedUserInterface for Symfony auth but the
+ *   system user is excluded from all authentication flows.
+ * - ROLE_SYSTEM distinguishes synthetic ownership from real users.
+ *   The user is never loaded in a security context, so ROLE_USER
+ *   is not needed. Only the UUID is used to associate submissions.
+ * - created_at uses T00:00:00 as a sentinel — the system account
+ *   predates all real users in the demo.
+ */
 final class Version20260609000001 extends AbstractMigration
 {
     public function getDescription(): string
@@ -22,7 +37,7 @@ final class Version20260609000001 extends AbstractMigration
                 'system@triageflow.local',
                 '[\"ROLE_SYSTEM\"]',
                 '',
-                '2026-06-09T00:00:00+00:00'
+                '2026-06-09 00:00:00'
             )");
     }
 
