@@ -70,6 +70,19 @@ final class TriageSubmission
     }
 
     /**
+     * Named constructor — create a triage submission with explicit isSynthetic flag.
+     *
+     * Used by the synthetic case generator. Regular user submissions
+     * should continue using submit().
+     */
+    public static function create(User $user, string $initialDescription, bool $isSynthetic = false): self
+    {
+        $submission = new self($user, $initialDescription);
+        $submission->isSynthetic = $isSynthetic;
+        return $submission;
+    }
+
+    /**
      * Record an AI follow-up question in the conversation history.
      *
      * Increments currentTurn and transitions status to awaiting_answer.
