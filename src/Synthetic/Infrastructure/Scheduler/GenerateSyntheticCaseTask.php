@@ -9,12 +9,12 @@ use App\Synthetic\Application\Command\GenerateSyntheticCaseHandler;
 use Symfony\Component\Scheduler\Attribute\AsCronTask;
 
 /**
- * Scheduled task that generates a synthetic triage case every 60 seconds.
+ * Scheduled task that generates a synthetic triage case every hour.
  *
  * Triggered by the symfony/scheduler configured in scheduler.yaml.
  * Runs only when the messenger consumer for scheduler_default is running.
  */
-#[AsCronTask('*/60 * * * *')]
+#[AsCronTask('0 * * * *')]
 final readonly class GenerateSyntheticCaseTask
 {
     public function __construct(

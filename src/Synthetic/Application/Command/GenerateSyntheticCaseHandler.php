@@ -41,7 +41,7 @@ final readonly class GenerateSyntheticCaseHandler
         private TriageAnalyzerInterface $analyzer,
         private TriageSubmissionRepository $submissionRepository,
         private EntityManagerInterface $entityManager,
-        private ?MessageBusInterface $messageBus = null,
+        private MessageBusInterface $messageBus,
     ) {}
 
     public function __invoke(GenerateSyntheticCaseCommand $command): TriageSubmission
@@ -84,7 +84,7 @@ final readonly class GenerateSyntheticCaseHandler
             $this->entityManager->flush();
 
             // Dispatch follow-up turn with 10-second delay (simulate human typing)
-            $this->messageBus?->dispatch(
+            $this->messageBus->dispatch(
                 (new Envelope(new ProcessSyntheticTurnMessage($submission->getId())))
                     ->with(new DelayStamp(10000)),
             );

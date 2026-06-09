@@ -30,7 +30,7 @@ use Symfony\Component\Messenger\Stamp\DelayStamp;
  *   7. If AI returns a question → addAiQuestion() + dispatch next turn (delayed 10s)
  */
 #[AsMessageHandler]
-final readonly class ProcessSyntheticTurnHandler
+final readonly class ProcessSyntheticTurnMessageHandler
 {
     public function __construct(
         private TriageSubmissionRepository $repository,
@@ -38,7 +38,7 @@ final readonly class ProcessSyntheticTurnHandler
         private SyntheticSystemPrompt $syntheticPrompt,
         private TriageAnalyzerInterface $analyzer,
         private EntityManagerInterface $entityManager,
-        private ?MessageBusInterface $messageBus = null,
+        private MessageBusInterface $messageBus,
     ) {}
 
     public function __invoke(ProcessSyntheticTurnMessage $message): void
@@ -113,7 +113,7 @@ final readonly class ProcessSyntheticTurnHandler
             $this->entityManager->flush();
 
             // Dispatch next synthetic turn with 10-second delay
-            $this->messageBus?->dispatch(
+            $this->messageBus->dispatch(
                 (new Envelope(new ProcessSyntheticTurnMessage($submission->getId())))
                     ->with(new DelayStamp(10000)),
             );
