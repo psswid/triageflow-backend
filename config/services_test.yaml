@@ -1,3 +1,14 @@
 services:
+    App\Tests\Triage\Infrastructure\Controller\TestTriageAnalyzer:
+        autowire: true
+        autoconfigure: true
+
     App\Triage\Application\Service\TriageAnalyzerInterface:
         alias: 'App\Tests\Triage\Infrastructure\Controller\TestTriageAnalyzer'
+
+    App\Tests\Synthetic\Infrastructure\TestOpenRouterClient:
+        autowire: true
+        autoconfigure: true
+
+    App\Shared\Infrastructure\Ai\OpenRouterClientInterface:
+        alias: 'App\Tests\Synthetic\Infrastructure\TestOpenRouterClient'
