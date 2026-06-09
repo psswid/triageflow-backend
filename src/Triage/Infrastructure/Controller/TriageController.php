@@ -8,6 +8,7 @@ use App\Triage\Application\Command\SubmitTriageCommand;
 use App\Triage\Application\Command\SubmitTriageHandler;
 use App\Triage\Application\Message\ProcessTriageMessage;
 use App\Triage\Domain\Entity\TriageStatus;
+use App\Triage\Domain\Entity\TriageSubmission;
 use App\Triage\Domain\Repository\TriageSubmissionRepository;
 use App\User\Domain\Entity\User;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;

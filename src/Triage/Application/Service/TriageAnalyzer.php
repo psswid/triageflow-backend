@@ -126,6 +126,15 @@ FORCE;
      */
     private function parseAndDiscriminate(string $rawResponse, int $turn): array
     {
+        // Strip markdown code block wrappers (e.g. ```json ... ```) that LLMs
+        // often add around JSON output despite instructions to respond with
+        // pure JSON.
+        $rawResponse = preg_replace(
+            '/^```(?:json)?\s*\n?(.*?)\n?```$/s',
+            '$1',
+            trim($rawResponse),
+        );
+
         $data = json_decode($rawResponse, true);
 
         // ── Malformed JSON ────────────────────────────────────────────
