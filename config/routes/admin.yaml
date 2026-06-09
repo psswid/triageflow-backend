@@ -1,0 +1,3 @@
+admin_routes:
+    resource: ../../src/Admin/Infrastructure/Controller/
+    type: attribute

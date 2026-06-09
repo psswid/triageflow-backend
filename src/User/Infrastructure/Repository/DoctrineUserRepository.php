@@ -35,4 +35,9 @@ final class DoctrineUserRepository extends ServiceEntityRepository implements Us
     {
         return $this->findOneBy(['email' => $email]);
     }
+
+    public function findAll(): array
+    {
+        return $this->findBy([], ['createdAt' => 'DESC']);
+    }
 }
