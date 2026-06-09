@@ -8,6 +8,7 @@ use App\User\Domain\Repository\UserRepository;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Uid\Uuid;
@@ -33,6 +34,10 @@ final class ImpersonationController extends AbstractController
 
         if ($user === null) {
             throw new NotFoundHttpException(sprintf('User "%s" not found.', $id));
+        }
+
+        if (in_array('ROLE_SYSTEM', $user->getRoles(), true)) {
+            throw new AccessDeniedHttpException('The system user cannot be impersonated.');
         }
 
         // Generate a JWT for the target user (same mechanism as login)
