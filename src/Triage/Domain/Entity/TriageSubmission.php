@@ -41,6 +41,10 @@ final class TriageSubmission
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $processedAt = null;
 
+    /** Duration of processing in seconds (submittedAt → processedAt). */
+    #[ORM\Column(type: 'integer', nullable: true)]
+    private ?int $processingDuration = null;
+
     private function __construct(User $user, string $initialDescription)
     {
         $this->validateContentLength($initialDescription, 500, 'Initial symptom description');
@@ -118,6 +122,7 @@ final class TriageSubmission
         $this->outcome = $outcome;
         $this->status = TriageStatus::Completed;
         $this->processedAt = new \DateTimeImmutable();
+        $this->processingDuration = $this->processedAt->getTimestamp() - $this->submittedAt->getTimestamp();
 
         $this->conversationHistory[] = [
             'type' => 'result',
@@ -190,6 +195,11 @@ final class TriageSubmission
     public function getProcessedAt(): ?\DateTimeImmutable
     {
         return $this->processedAt;
+    }
+
+    public function getProcessingDuration(): ?int
+    {
+        return $this->processingDuration;
     }
 
     // ─── Internal Helpers ────────────────────────────────────────────

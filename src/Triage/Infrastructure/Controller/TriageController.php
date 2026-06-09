@@ -202,11 +202,27 @@ final class TriageController extends AbstractController
     #[Route('/api/triage/submissions', methods: ['GET'], name: 'api_triage_submissions')]
     public function submissions(): JsonResponse
     {
-        // DEFERRED: Full implementation planned for Issue #4 or later.
-        // Endpoint is wired so the frontend route resolves,
-        // but always returns an empty list.
+        /** @var User $user */
+        $user = $this->getUser();
+        $submissions = $this->repository->findByUser($user->getId());
+
         return $this->json([
-            'data' => [],
+            'data' => array_map(fn(TriageSubmission $s) => [
+                'id' => $s->getId()->toRfc4122(),
+                'type' => 'triage_submission',
+                'attributes' => [
+                    'status' => $s->getStatus()->value,
+                    'isSynthetic' => $s->isSynthetic(),
+                    'currentTurn' => $s->getCurrentTurn(),
+                    'submittedAt' => $s->getSubmittedAt()->format('c'),
+                    'processedAt' => $s->getProcessedAt()?->format('c'),
+                    'outcome' => $s->getOutcome()?->getSpecialist() !== null ? [
+                        'specialist' => $s->getOutcome()->getSpecialist(),
+                        'urgency' => $s->getOutcome()->getUrgency(),
+                        'justification' => $s->getOutcome()->getJustification(),
+                    ] : null,
+                ],
+            ], $submissions),
         ]);
     }
 
