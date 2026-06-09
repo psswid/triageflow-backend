@@ -10,7 +10,6 @@ use App\User\Domain\Entity\User;
 use App\User\Domain\Repository\UserRepository;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Uid\Uuid;
@@ -93,37 +92,6 @@ final class AdminController extends AbstractController
                 ],
             ], $users),
         ]);
-    }
-
-    #[Route('/api/admin/synthetic/generate', methods: ['POST'], name: 'api_admin_synthetic_generate')]
-    public function generateSynthetic(): JsonResponse
-    {
-        // DEFERRED: Full implementation planned with AI integration (Issue #5 or later).
-        return $this->json([
-            'data' => [
-                'message' => 'Synthetic case generation not yet implemented.',
-            ],
-        ], Response::HTTP_NOT_IMPLEMENTED);
-    }
-
-    #[Route('/api/admin/users/{id}/impersonate', methods: ['POST'], name: 'api_admin_impersonate')]
-    public function impersonate(string $id): JsonResponse
-    {
-        $uuid = Uuid::fromString($id);
-        $user = $this->userRepository->findById($uuid);
-
-        if ($user === null) {
-            throw new NotFoundHttpException(sprintf('User "%s" not found.', $id));
-        }
-
-        // Generate a JWT token for the impersonated user.
-        // Reuses the same login endpoint logic.
-        return $this->json([
-            'data' => [
-                'token' => '', // DEFERRED: Token generation will use JWT helper
-                'impersonated' => $user->getEmail(),
-            ],
-        ], Response::HTTP_NOT_IMPLEMENTED);
     }
 
     /**
