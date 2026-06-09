@@ -12,6 +12,7 @@ node_modules/
 ###< node-modules ###
 
 ###> env ###
+.env
 .env.local
 .env.*.local
 .env.dev
