@@ -9,11 +9,14 @@ framework:
                     max_retries: 3
                     delay: 2000
                     multiplier: 2
+            scheduler_default:
+                dsn: 'doctrine://default?queue_name=scheduler_default'
             failed: 'doctrine://default?queue_name=failed'
             sync: 'sync://'
 
         routing:
             App\Triage\Application\Message\ProcessTriageMessage: async
+            App\Synthetic\Application\Message\ProcessSyntheticTurnMessage: async
 
 when@test:
     framework:

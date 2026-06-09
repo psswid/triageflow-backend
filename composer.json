@@ -10,6 +10,7 @@
         "doctrine/doctrine-bundle": "^3.2",
         "doctrine/doctrine-migrations-bundle": "^4.0",
         "doctrine/orm": "^3.6",
+        "dragonmantank/cron-expression": "^3.6",
         "lexik/jwt-authentication-bundle": "*",
         "nelmio/cors-bundle": "*",
         "symfony/console": "7.4.*",
