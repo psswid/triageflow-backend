@@ -32,6 +32,7 @@ final class AdminControllerTest extends WebTestCase
         $client->jsonRequest('POST', '/api/register', [
             'email' => $email,
             'password' => $password,
+            'password_confirmation' => $password,
         ]);
         $this->assertResponseStatusCodeSame(201);
 

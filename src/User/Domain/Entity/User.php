@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\User\Domain\Entity;
 
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
@@ -29,6 +30,15 @@ final class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column]
     private readonly \DateTimeImmutable $createdAt;
 
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $emailVerifiedAt = null;
+
+    #[ORM\Column(type: Types::STRING, length: 64, nullable: true)]
+    private ?string $emailVerificationToken = null;
+
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $verificationTokenExpiresAt = null;
+
     public function __construct(string $email, string $password)
     {
         $this->id = Uuid::v4();
@@ -36,6 +46,8 @@ final class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->password = $password;
         $this->roles = ['ROLE_USER'];
         $this->createdAt = new \DateTimeImmutable();
+        $this->emailVerificationToken = bin2hex(random_bytes(32));
+        $this->verificationTokenExpiresAt = new \DateTimeImmutable('+24 hours');
     }
 
     public static function register(string $email, string $hashedPassword): self
@@ -82,5 +94,33 @@ final class User implements UserInterface, PasswordAuthenticatedUserInterface
         if (!in_array('ROLE_ADMIN', $this->roles, true)) {
             $this->roles[] = 'ROLE_ADMIN';
         }
+    }
+
+    public function getEmailVerifiedAt(): ?\DateTimeImmutable
+    {
+        return $this->emailVerifiedAt;
+    }
+
+    public function getEmailVerificationToken(): ?string
+    {
+        return $this->emailVerificationToken;
+    }
+
+    public function isEmailVerified(): bool
+    {
+        return $this->emailVerifiedAt !== null;
+    }
+
+    public function markEmailVerified(): void
+    {
+        if ($this->emailVerifiedAt === null) {
+            $this->emailVerifiedAt = new \DateTimeImmutable();
+        }
+    }
+
+    public function isVerificationTokenExpired(): bool
+    {
+        return $this->verificationTokenExpiresAt !== null
+            && $this->verificationTokenExpiresAt < new \DateTimeImmutable();
     }
 }

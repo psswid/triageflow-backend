@@ -33,8 +33,18 @@ final class TriageControllerTest extends WebTestCase
         $client->jsonRequest('POST', '/api/register', [
             'email' => $email,
             'password' => $password,
+            'password_confirmation' => $password,
         ]);
         $this->assertResponseStatusCodeSame(201);
+
+        // Verify email before login
+        $userRepo = $client->getContainer()->get(\App\User\Domain\Repository\UserRepository::class);
+        $user = $userRepo->findByEmail($email);
+        $this->assertNotNull($user);
+        $token = $user->getEmailVerificationToken();
+        $this->assertNotNull($token);
+        $client->jsonRequest('GET', '/api/verify-email?token=' . $token);
+        $this->assertResponseStatusCodeSame(200);
 
         $client->jsonRequest('POST', '/api/login', [
             'email' => $email,

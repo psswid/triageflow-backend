@@ -15,7 +15,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 final class OpenRouterClientTest extends TestCase
 {
     private const string BASE_URL = 'https://openrouter.ai/api/v1';
-    private const string DEFAULT_MODEL = 'google/gemma-4-31b-it:free';
+    private const string DEFAULT_MODEL = 'openrouter/free';
     private const string FALLBACK_MODEL = 'openai/gpt-oss-120b:free';
     private const string API_KEY = 'test-api-key';
     private const int TIMEOUT = 60;
@@ -275,6 +275,83 @@ final class OpenRouterClientTest extends TestCase
         } finally {
             // Key assertion: only 1 call was made — no retry on HTTP errors
             $this->assertSame(1, $callCount, 'Should not retry on HTTP 500 — only TransportException triggers retry');
+        }
+    }
+
+    // ─── Rate Limiting (429) ─────────────────────────────────────────
+
+    public function testChatSwitchesToFallbackModelOn429(): void
+    {
+        $callCount = 0;
+        $modelsUsed = [];
+
+        $httpClient = new MockHttpClient(function (string $method, string $url, array $options) use (&$callCount, &$modelsUsed): MockResponse {
+            $callCount++;
+            $json = $options['json'] ?? json_decode((string) ($options['body'] ?? '[]'), true);
+            $modelsUsed[] = $json['model'] ?? 'unknown';
+
+            if ($callCount === 1) {
+                return new MockResponse('{"error":"Rate limited"}', ['http_code' => 429]);
+            }
+
+            $responseBody = json_encode([
+                'choices' => [['message' => ['content' => 'Fallback model response']]],
+            ], JSON_THROW_ON_ERROR);
+
+            return new MockResponse($responseBody, ['http_code' => 200]);
+        });
+
+        $client = $this->createClient($httpClient);
+        $result = $client->chat([['role' => 'user', 'content' => 'Hello']]);
+
+        $this->assertSame('Fallback model response', $result);
+        $this->assertSame(2, $callCount);
+        $this->assertSame(self::DEFAULT_MODEL, $modelsUsed[0]);
+        $this->assertSame(self::FALLBACK_MODEL, $modelsUsed[1]);
+    }
+
+    public function testChatThrowsWhenBothModelsGet429(): void
+    {
+        $callCount = 0;
+
+        $httpClient = new MockHttpClient(function () use (&$callCount): MockResponse {
+            $callCount++;
+
+            return new MockResponse('{"error":"Rate limited"}', ['http_code' => 429]);
+        });
+
+        $client = $this->createClient($httpClient);
+
+        $this->expectException(OpenRouterException::class);
+        $this->expectExceptionMessageMatches('/rate limited on both/i');
+
+        try {
+            $client->chat([['role' => 'user', 'content' => 'Hello']]);
+        } finally {
+            $this->assertSame(2, $callCount, 'Expected exactly 2 calls (default + fallback)');
+        }
+    }
+
+    public function testChatThrowsImmediatelyOn429WhenFallbackAlreadyPassed(): void
+    {
+        $callCount = 0;
+
+        $httpClient = new MockHttpClient(function () use (&$callCount): MockResponse {
+            $callCount++;
+
+            return new MockResponse('{"error":"Rate limited"}', ['http_code' => 429]);
+        });
+
+        $client = $this->createClient($httpClient);
+
+        $this->expectException(OpenRouterException::class);
+
+        // Pass the fallback model explicitly — client has nothing left to switch to,
+        // so it should throw on the first 429 without attempting the already-used fallback again.
+        try {
+            $client->chat([['role' => 'user', 'content' => 'Hello']], self::FALLBACK_MODEL);
+        } finally {
+            $this->assertSame(1, $callCount, 'Expected exactly 1 call when model is already the fallback');
         }
     }
 

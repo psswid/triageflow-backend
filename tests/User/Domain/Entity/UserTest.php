@@ -53,4 +53,41 @@ final class UserTest extends TestCase
     {
         $this->assertSame(self::TEST_EMAIL, $this->user->getUserIdentifier());
     }
+
+    public function testNewUserHasNullEmailVerifiedAt(): void
+    {
+        $this->assertNull($this->user->getEmailVerifiedAt());
+    }
+
+    public function testMarkEmailVerifiedSetsTimestamp(): void
+    {
+        $this->user->markEmailVerified();
+        $this->assertNotNull($this->user->getEmailVerifiedAt());
+    }
+
+    public function testGetEmailVerificationTokenReturnsToken(): void
+    {
+        $token = $this->user->getEmailVerificationToken();
+        $this->assertNotNull($token);
+        $this->assertNotEmpty($token);
+    }
+
+    public function testIsEmailVerifiedReturnsFalseInitially(): void
+    {
+        $this->assertFalse($this->user->isEmailVerified());
+    }
+
+    public function testIsEmailVerifiedReturnsTrueAfterVerification(): void
+    {
+        $this->user->markEmailVerified();
+        $this->assertTrue($this->user->isEmailVerified());
+    }
+
+    public function testMarkEmailVerifiedIsIdempotent(): void
+    {
+        $this->user->markEmailVerified();
+        $verifiedAt = $this->user->getEmailVerifiedAt();
+        $this->user->markEmailVerified();
+        $this->assertSame($verifiedAt, $this->user->getEmailVerifiedAt());
+    }
 }

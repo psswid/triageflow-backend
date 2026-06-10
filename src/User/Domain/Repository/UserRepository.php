@@ -15,6 +15,8 @@ interface UserRepository
 
     public function findByEmail(string $email): ?User;
 
+    public function findByVerificationToken(string $token): ?User;
+
     /**
      * @return array<int, User>
      */

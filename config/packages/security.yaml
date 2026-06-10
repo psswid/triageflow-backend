@@ -15,6 +15,7 @@ security:
         login:
             pattern: ^/api/login
             stateless: true
+            user_checker: App\User\Infrastructure\Security\EmailVerifiedUserChecker
             json_login:
                 check_path: api_login
                 username_path: email
@@ -29,8 +30,9 @@ security:
             lazy: true
 
     access_control:
-        - { path: ^/api/register, roles: PUBLIC_ACCESS }
-        - { path: ^/api/login,    roles: PUBLIC_ACCESS }
+        - { path: ^/api/register,     roles: PUBLIC_ACCESS }
+        - { path: ^/api/login,        roles: PUBLIC_ACCESS }
+        - { path: ^/api/verify-email, roles: PUBLIC_ACCESS }
         - { path: ^/api/admin,    roles: ROLE_ADMIN }
         - { path: ^/api/triage,   roles: ROLE_USER }
         - { path: ^/api,          roles: IS_AUTHENTICATED_FULLY }
