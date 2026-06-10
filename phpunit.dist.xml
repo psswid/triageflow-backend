@@ -23,6 +23,12 @@
         </testsuite>
     </testsuites>
 
+    <coverage>
+        <report>
+            <html outputDirectory="var/coverage"/>
+        </report>
+    </coverage>
+
     <source ignoreSuppressionOfDeprecations="true"
             ignoreIndirectDeprecations="true"
             restrictNotices="true"
