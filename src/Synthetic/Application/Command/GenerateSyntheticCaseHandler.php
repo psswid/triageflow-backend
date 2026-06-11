@@ -5,30 +5,26 @@ declare(strict_types=1);
 namespace App\Synthetic\Application\Command;
 
 use App\Shared\Infrastructure\Ai\OpenRouterClientInterface;
-use App\Synthetic\Application\Message\ProcessSyntheticTurnMessage;
+use App\Synthetic\Application\Message\ProcessSyntheticCaseMessage;
 use App\Synthetic\Application\Service\SyntheticSystemPrompt;
-use App\Triage\Application\Service\TriageAnalyzerInterface;
-use App\Triage\Application\Service\TriageAnalysisFailedException;
-use App\Triage\Domain\Entity\TriageOutcome;
 use App\Triage\Domain\Entity\TriageSubmission;
 use App\Triage\Domain\Repository\TriageSubmissionRepository;
 use App\User\Domain\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
-use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * Generates one synthetic triage case end-to-end.
+ * Generates one synthetic triage case.
  *
  * Flow:
  *   1. Resolve the system user (UUID 00000000-...)
  *   2. Call OpenRouter to generate a realistic symptom description
  *   3. Create TriageSubmission::create(systemUser, symptom, isSynthetic: true)
- *   4. Run initial AI analysis via TriageAnalyzer
- *   5. If AI returns a result → complete immediately
- *   6. If AI asks a question → record it + dispatch ProcessSyntheticTurnMessage (10s delay)
+ *   4. Dispatch ProcessSyntheticCaseMessage for async AI analysis
+ *
+ * The AI triage analysis runs asynchronously via the messenger worker
+ * (ProcessSyntheticCaseMessageHandler), so the generator returns quickly.
  */
 final readonly class GenerateSyntheticCaseHandler
 {
@@ -38,7 +34,6 @@ final readonly class GenerateSyntheticCaseHandler
         private UserRepository $userRepository,
         private OpenRouterClientInterface $openRouter,
         private SyntheticSystemPrompt $syntheticPrompt,
-        private TriageAnalyzerInterface $analyzer,
         private TriageSubmissionRepository $submissionRepository,
         private EntityManagerInterface $entityManager,
         private MessageBusInterface $messageBus,
@@ -60,35 +55,12 @@ final readonly class GenerateSyntheticCaseHandler
         // Step 2: Create submission with isSynthetic=true
         $submission = TriageSubmission::create($systemUser, $symptomDescription, isSynthetic: true);
         $this->submissionRepository->save($submission);
+        $this->entityManager->flush();
 
-        // Step 3: Run initial AI analysis
-        try {
-            $result = $this->analyzer->analyzeInitial($symptomDescription);
-        } catch (TriageAnalysisFailedException) {
-            $submission->markFailed();
-            $this->entityManager->flush();
-            return $submission;
-        }
-
-        // Step 4: Handle result or question
-        if ($result['type'] === 'result') {
-            $outcome = TriageOutcome::create(
-                specialist: $result['specialist'],
-                urgency: $result['urgency'],
-                justification: $result['justification'],
-            );
-            $submission->completeWithOutcome($outcome);
-            $this->entityManager->flush();
-        } else {
-            $submission->addAiQuestion($result['content']);
-            $this->entityManager->flush();
-
-            // Dispatch follow-up turn with 10-second delay (simulate human typing)
-            $this->messageBus->dispatch(
-                (new Envelope(new ProcessSyntheticTurnMessage($submission->getId())))
-                    ->with(new DelayStamp(10000)),
-            );
-        }
+        // Step 3: Dispatch async AI analysis
+        $this->messageBus->dispatch(
+            new ProcessSyntheticCaseMessage($submission->getId()),
+        );
 
         return $submission;
     }
@@ -117,6 +89,12 @@ final readonly class GenerateSyntheticCaseHandler
 
         if ($symptom === '') {
             throw new \RuntimeException('OpenRouter returned empty symptom description after retry.');
+        }
+
+        // Enforce the 500-character limit (defense-in-depth; AI prompt already
+        // asks for under 500 chars, but the model sometimes ignores it).
+        if (mb_strlen($symptom) > 500) {
+            $symptom = mb_substr($symptom, 0, 497) . '...';
         }
 
         return $symptom;

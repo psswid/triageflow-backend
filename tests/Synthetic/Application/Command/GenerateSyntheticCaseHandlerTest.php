@@ -7,11 +7,8 @@ namespace App\Tests\Synthetic\Application\Command;
 use App\Shared\Infrastructure\Ai\OpenRouterClientInterface;
 use App\Synthetic\Application\Command\GenerateSyntheticCaseCommand;
 use App\Synthetic\Application\Command\GenerateSyntheticCaseHandler;
-use App\Synthetic\Application\Message\ProcessSyntheticTurnMessage;
+use App\Synthetic\Application\Message\ProcessSyntheticCaseMessage;
 use App\Synthetic\Application\Service\SyntheticSystemPrompt;
-use App\Triage\Application\Service\TriageAnalyzerInterface;
-use App\Triage\Application\Service\TriageAnalysisFailedException;
-use App\Triage\Domain\Entity\TriageOutcome;
 use App\Triage\Domain\Entity\TriageStatus;
 use App\Triage\Domain\Entity\TriageSubmission;
 use App\Triage\Domain\Repository\TriageSubmissionRepository;
@@ -29,7 +26,6 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
     private UserRepository&MockObject $userRepository;
     private OpenRouterClientInterface&MockObject $openRouter;
     private SyntheticSystemPrompt $syntheticPrompt;
-    private TriageAnalyzerInterface&MockObject $analyzer;
     private TriageSubmissionRepository&MockObject $submissionRepository;
     private EntityManagerInterface&MockObject $entityManager;
     private MessageBusInterface&MockObject $messageBus;
@@ -40,7 +36,6 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
         $this->userRepository = $this->createMock(UserRepository::class);
         $this->openRouter = $this->createMock(OpenRouterClientInterface::class);
         $this->syntheticPrompt = new SyntheticSystemPrompt();
-        $this->analyzer = $this->createMock(TriageAnalyzerInterface::class);
         $this->submissionRepository = $this->createMock(TriageSubmissionRepository::class);
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
         $this->messageBus = $this->createMock(MessageBusInterface::class);
@@ -57,7 +52,6 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
             $this->userRepository,
             $this->openRouter,
             $this->syntheticPrompt,
-            $this->analyzer,
             $this->submissionRepository,
             $this->entityManager,
             $this->messageBus,
@@ -65,10 +59,10 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // Test 1: AI returns result → submission completed with outcome
+    // Test 1: Success — submission created and async message dispatched
     // ─────────────────────────────────────────────────────────────────
 
-    public function testHandlerCreatesSyntheticSubmissionAndCompletesWhenAiReturnsResult(): void
+    public function testHandlerCreatesSubmissionAndDispatchesAsyncMessage(): void
     {
         $symptom = 'I have been experiencing sharp chest pain for 3 days.';
 
@@ -97,89 +91,16 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
                     && $submission->getCurrentTurn() === 0;
             }));
 
-        // Arrange: AI returns a result directly
-        $this->analyzer->expects($this->once())
-            ->method('analyzeInitial')
-            ->with($symptom)
-            ->willReturn([
-                'type' => 'result',
-                'specialist' => 'Cardiologist',
-                'urgency' => 'HIGH',
-                'justification' => 'Patient reports chest pain indicative of possible cardiac event.',
-            ]);
-
+        // Arrange: flush called after saving
         $this->entityManager->expects($this->once())
             ->method('flush');
 
-        $this->messageBus->expects($this->never())
-            ->method('dispatch');
-
-        // Act
-        $handler = $this->createHandler();
-        $result = $handler(new GenerateSyntheticCaseCommand());
-
-        // Assert
-        $this->assertSame(TriageStatus::Completed, $result->getStatus());
-        $this->assertNotNull($result->getOutcome());
-        $this->assertSame('Cardiologist', $result->getOutcome()->getSpecialist());
-        $this->assertSame('HIGH', $result->getOutcome()->getUrgency());
-        $this->assertTrue($result->isSynthetic());
-        $this->assertNotNull($result->getProcessedAt());
-
-        $history = $result->getConversationHistory();
-        $this->assertCount(2, $history);
-        $this->assertSame('initial_description', $history[0]['type']);
-        $this->assertSame($symptom, $history[0]['content']);
-        $this->assertSame('result', $history[1]['type']);
-    }
-
-    // ─────────────────────────────────────────────────────────────────
-    // Test 2: AI returns question → dispatches async message
-    // ─────────────────────────────────────────────────────────────────
-
-    public function testHandlerDispatchesAsyncMessageWhenAiReturnsQuestion(): void
-    {
-        $symptom = 'I have a persistent headache for the past week.';
-
-        // Arrange: system user found
-        $this->userRepository->expects($this->once())
-            ->method('findById')
-            ->willReturn($this->systemUser);
-
-        // Arrange: symptom generation
-        $this->openRouter->expects($this->once())
-            ->method('chat')
-            ->willReturn($symptom);
-
-        // Arrange: submission saved
-        $this->submissionRepository->expects($this->once())
-            ->method('save');
-
-        // Arrange: AI returns a follow-up question
-        $this->analyzer->expects($this->once())
-            ->method('analyzeInitial')
-            ->with($symptom)
-            ->willReturn([
-                'type' => 'question',
-                'content' => 'How long have you had this headache? Does it throb or is it constant?',
-            ]);
-
-        // Arrange: flush called after recording the question
-        $this->entityManager->expects($this->once())
-            ->method('flush');
-
-        // Arrange: async message dispatched with delay
+        // Arrange: async message dispatched for AI analysis
         $this->messageBus->expects($this->once())
             ->method('dispatch')
             ->with($this->callback(function (object $message): bool {
-                if (!$message instanceof Envelope) {
-                    return false;
-                }
-                $inner = $message->getMessage();
-                if (!$inner instanceof ProcessSyntheticTurnMessage) {
-                    return false;
-                }
-                return $inner->submissionId instanceof Uuid;
+                return $message instanceof ProcessSyntheticCaseMessage
+                    && $message->submissionId instanceof Uuid;
             }))
             ->willReturn(new Envelope(new \stdClass()));
 
@@ -188,63 +109,19 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
         $result = $handler(new GenerateSyntheticCaseCommand());
 
         // Assert
-        $this->assertSame(TriageStatus::AwaitingAnswer, $result->getStatus());
+        $this->assertSame(TriageStatus::Pending, $result->getStatus());
         $this->assertNull($result->getOutcome());
         $this->assertNull($result->getProcessedAt());
         $this->assertTrue($result->isSynthetic());
 
         $history = $result->getConversationHistory();
-        $this->assertCount(2, $history);
+        $this->assertCount(1, $history);
         $this->assertSame('initial_description', $history[0]['type']);
-        $this->assertSame('question', $history[1]['type']);
-        $this->assertSame('How long have you had this headache? Does it throb or is it constant?', $history[1]['content']);
+        $this->assertSame($symptom, $history[0]['content']);
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // Test 3: AI analysis fails → submission marked as failed
-    // ─────────────────────────────────────────────────────────────────
-
-    public function testHandlerMarksSubmissionFailedWhenAnalyzerThrows(): void
-    {
-        // Arrange: system user found
-        $this->userRepository->expects($this->once())
-            ->method('findById')
-            ->willReturn($this->systemUser);
-
-        // Arrange: symptom generation
-        $this->openRouter->expects($this->once())
-            ->method('chat')
-            ->willReturn('I have back pain for 2 weeks.');
-
-        // Arrange: submission saved
-        $this->submissionRepository->expects($this->once())
-            ->method('save');
-
-        // Arrange: AI throws
-        $this->analyzer->expects($this->once())
-            ->method('analyzeInitial')
-            ->willThrowException(new TriageAnalysisFailedException('AI communication failed'));
-
-        // Arrange: flush called in catch block
-        $this->entityManager->expects($this->once())
-            ->method('flush');
-
-        $this->messageBus->expects($this->never())
-            ->method('dispatch');
-
-        // Act
-        $handler = $this->createHandler();
-        $result = $handler(new GenerateSyntheticCaseCommand());
-
-        // Assert
-        $this->assertSame(TriageStatus::Failed, $result->getStatus());
-        $this->assertNull($result->getOutcome());
-        $this->assertNull($result->getProcessedAt());
-        $this->assertTrue($result->isSynthetic());
-    }
-
-    // ─────────────────────────────────────────────────────────────────
-    // Test 4: System user not found → throws RuntimeException
+    // Test 2: System user not found → throws RuntimeException
     // ─────────────────────────────────────────────────────────────────
 
     public function testHandlerThrowsExceptionWhenSystemUserNotFound(): void
@@ -259,8 +136,6 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
             ->method('chat');
         $this->submissionRepository->expects($this->never())
             ->method('save');
-        $this->analyzer->expects($this->never())
-            ->method('analyzeInitial');
         $this->entityManager->expects($this->never())
             ->method('flush');
         $this->messageBus->expects($this->never())
@@ -275,7 +150,7 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // Test 5: Empty symptom after retry → throws RuntimeException
+    // Test 3: Empty symptom after retry → throws RuntimeException
     // ─────────────────────────────────────────────────────────────────
 
     public function testHandlerThrowsExceptionWhenSymptomGenerationReturnsEmptyAfterRetry(): void
@@ -293,8 +168,6 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
         // Arrange: no other services should be called after generation failure
         $this->submissionRepository->expects($this->never())
             ->method('save');
-        $this->analyzer->expects($this->never())
-            ->method('analyzeInitial');
         $this->entityManager->expects($this->never())
             ->method('flush');
         $this->messageBus->expects($this->never())

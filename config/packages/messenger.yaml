@@ -17,6 +17,7 @@ framework:
         routing:
             App\Triage\Application\Message\ProcessTriageMessage: async
             App\Synthetic\Application\Message\ProcessSyntheticTurnMessage: async
+            App\Synthetic\Application\Message\ProcessSyntheticCaseMessage: async
 
 when@test:
     framework:
