@@ -117,25 +117,16 @@ final class AdminController extends AbstractController
     public function retryFailedMessage(int $id): JsonResponse
     {
         try {
-            $row = $this->dbal->fetchAssociative(
-                "SELECT id FROM messenger_messages WHERE id = :id AND queue_name = 'failed'",
-                ['id' => $id]
-            );
-        } catch (DBALException) {
-            $row = false;
-        }
-
-        if ($row === false) {
-            throw new NotFoundHttpException(sprintf('Failed message "%d" not found.', $id));
-        }
-
-        try {
-            $this->dbal->executeStatement(
-                "UPDATE messenger_messages SET queue_name = 'default', delivered_at = NULL WHERE id = :id",
+            $affected = $this->dbal->executeStatement(
+                "UPDATE messenger_messages SET queue_name = 'default', delivered_at = NULL WHERE id = :id AND queue_name = 'failed'",
                 ['id' => $id]
             );
         } catch (DBALException $e) {
             throw new \RuntimeException('Failed to retry message: ' . $e->getMessage());
+        }
+
+        if ($affected === 0) {
+            throw new NotFoundHttpException(sprintf('Failed message "%d" not found.', $id));
         }
 
         return $this->json(['data' => ['id' => $id, 'status' => 'retried']], 200);
@@ -145,25 +136,16 @@ final class AdminController extends AbstractController
     public function deleteFailedMessage(int $id): JsonResponse
     {
         try {
-            $row = $this->dbal->fetchAssociative(
-                "SELECT id FROM messenger_messages WHERE id = :id AND queue_name = 'failed'",
-                ['id' => $id]
-            );
-        } catch (DBALException) {
-            $row = false;
-        }
-
-        if ($row === false) {
-            throw new NotFoundHttpException(sprintf('Failed message "%d" not found.', $id));
-        }
-
-        try {
-            $this->dbal->executeStatement(
-                "DELETE FROM messenger_messages WHERE id = :id",
+            $affected = $this->dbal->executeStatement(
+                "DELETE FROM messenger_messages WHERE id = :id AND queue_name = 'failed'",
                 ['id' => $id]
             );
         } catch (DBALException $e) {
             throw new \RuntimeException('Failed to delete message: ' . $e->getMessage());
+        }
+
+        if ($affected === 0) {
+            throw new NotFoundHttpException(sprintf('Failed message "%d" not found.', $id));
         }
 
         return $this->json(['data' => ['id' => $id, 'status' => 'deleted']], 200);
