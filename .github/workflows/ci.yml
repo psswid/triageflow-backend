@@ -51,7 +51,9 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-scripts
 
       - name: Create .env for Symfony console
-        run: cp .env.test .env
+        run: |
+          cp .env.test .env
+          echo 'DEFAULT_URI=http://localhost:5173' >> .env
 
       - name: Setup test database
         run: |
@@ -87,7 +89,9 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-scripts
 
       - name: Create .env for Symfony console
-        run: cp .env.test .env
+        run: |
+          cp .env.test .env
+          echo 'DEFAULT_URI=http://localhost:5173' >> .env
 
       - name: PHPStan analysis
         run: php vendor/bin/phpstan analyse --level=5 --no-progress
