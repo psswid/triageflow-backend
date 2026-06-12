@@ -31,6 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create .env for Symfony boot
+        run: cp .env.test .env
+
       - name: Setup PHP 8.4
         uses: shivammathur/setup-php@v2
         with:
@@ -63,6 +66,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create .env for Symfony boot
+        run: cp .env.test .env
 
       - name: Setup PHP 8.4
         uses: shivammathur/setup-php@v2
