@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests;
 
-use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
-final class SmokeTest extends TestCase
+final class SmokeTest extends KernelTestCase
 {
     public function testInfrastructureWorks(): void
     {
-        $this->assertTrue(true);
+        self::bootKernel();
+        $this->assertNotEmpty(self::$kernel->getEnvironment());
     }
 }

@@ -149,10 +149,6 @@ final class ProcessSyntheticCaseMessageHandlerTest extends TestCase
                 if (!$inner instanceof ProcessSyntheticTurnMessage) {
                     return false;
                 }
-                if ($inner->submissionId === null) {
-                    return false;
-                }
-
                 // Verify DelayStamp is present (10s = 10000ms)
                 $stamps = $message->all(DelayStamp::class);
                 return count($stamps) === 1;

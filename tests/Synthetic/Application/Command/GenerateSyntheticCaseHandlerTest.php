@@ -84,7 +84,7 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
         // Arrange: submission is saved with correct attributes
         $this->submissionRepository->expects($this->once())
             ->method('save')
-            ->with($this->callback(function (TriageSubmission $submission) use ($symptom): bool {
+            ->with($this->callback(function (TriageSubmission $submission): bool {
                 return $submission->getUser() === $this->systemUser
                     && $submission->getStatus() === TriageStatus::Pending
                     && $submission->isSynthetic() === true
@@ -99,8 +99,7 @@ final class GenerateSyntheticCaseHandlerTest extends TestCase
         $this->messageBus->expects($this->once())
             ->method('dispatch')
             ->with($this->callback(function (object $message): bool {
-                return $message instanceof ProcessSyntheticCaseMessage
-                    && $message->submissionId instanceof Uuid;
+                return $message instanceof ProcessSyntheticCaseMessage;
             }))
             ->willReturn(new Envelope(new \stdClass()));
 

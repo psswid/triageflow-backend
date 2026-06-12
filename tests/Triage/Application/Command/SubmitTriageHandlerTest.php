@@ -66,7 +66,7 @@ final class SubmitTriageHandlerTest extends TestCase
 
         $this->repository->expects($this->once())
             ->method('save')
-            ->with($this->callback(function ($submission) use ($description) {
+            ->with($this->callback(function ($submission) {
                 return $submission->getUser() === $this->user
                     && $submission->getStatus() === TriageStatus::Pending
                     && $submission->getCurrentTurn() === 0;
@@ -78,7 +78,7 @@ final class SubmitTriageHandlerTest extends TestCase
         $this->messageBus->expects($this->once())
             ->method('dispatch')
             ->with($this->callback(function (ProcessTriageMessage $message) {
-                return $message->submissionId instanceof Uuid;
+                return true;
             }))
             ->willReturn(new Envelope(new \stdClass()));
 

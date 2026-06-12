@@ -37,8 +37,10 @@ final class TriageSubmissionTest extends TestCase
         $this->assertFalse($submission->isSynthetic());
         $this->assertNull($submission->getOutcome());
         $this->assertNull($submission->getProcessedAt());
-        $this->assertInstanceOf(\DateTimeImmutable::class, $submission->getSubmittedAt());
-        $this->assertInstanceOf(Uuid::class, $submission->getId());
+        $this->assertGreaterThan(
+            new \DateTimeImmutable('-1 minute'),
+            $submission->getSubmittedAt(),
+        );
     }
 
     public function testSubmitStoresInitialDescriptionInConversation(): void
@@ -300,7 +302,6 @@ final class TriageSubmissionTest extends TestCase
 
         $processedAt = $submission->getProcessedAt();
         $this->assertNotNull($processedAt);
-        $this->assertInstanceOf(\DateTimeImmutable::class, $processedAt);
     }
 
     // ─── markFailed ─────────────────────────────────────────────────
@@ -440,7 +441,6 @@ final class TriageSubmissionTest extends TestCase
         );
 
         $id = $submission->getId();
-        $this->assertInstanceOf(Uuid::class, $id);
         $this->assertNotEmpty($id->toRfc4122());
     }
 
@@ -486,7 +486,6 @@ final class TriageSubmissionTest extends TestCase
         $after = new \DateTimeImmutable();
 
         $submittedAt = $submission->getSubmittedAt();
-        $this->assertNotNull($submittedAt);
         $this->assertGreaterThanOrEqual($before, $submittedAt);
         $this->assertLessThanOrEqual($after, $submittedAt);
     }

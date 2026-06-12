@@ -167,19 +167,19 @@ FORCE;
 
         // ── Result response ────────────────────────────────────────────
         if ($type === 'result') {
-            if (!isset($data['specialist']) || $data['specialist'] === null) {
+            if (!isset($data['specialist'])) {
                 throw new TriageAnalysisFailedException(
                     'AI result is missing required field: specialist.',
                 );
             }
 
-            if (!isset($data['urgency']) || $data['urgency'] === null) {
+            if (!isset($data['urgency'])) {
                 throw new TriageAnalysisFailedException(
                     'AI result is missing required field: urgency.',
                 );
             }
 
-            if (!isset($data['justification']) || $data['justification'] === null) {
+            if (!isset($data['justification'])) {
                 throw new TriageAnalysisFailedException(
                     'AI result is missing required field: justification.',
                 );
