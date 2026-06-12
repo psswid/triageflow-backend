@@ -154,7 +154,9 @@ final class AdminController extends AbstractController
     {
         $headers = json_decode($row['headers'], true) ?? [];
         $body = $row['body'];
-        $preview = \mb_substr(\trim((string) \json_decode($body, true)['description'] ?? $body), 0, 120);
+        $decoded = \json_decode($body, true);
+        $description = \is_array($decoded) ? ($decoded['description'] ?? null) : null;
+        $preview = \mb_substr(\trim((string) ($description ?? $body)), 0, 120);
 
         return [
             'id' => (int) $row['id'],
