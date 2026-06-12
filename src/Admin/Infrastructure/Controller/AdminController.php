@@ -12,6 +12,8 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Routing\Attribute\Route;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception as DBALException;
 use Symfony\Component\Uid\Uuid;
 
 final class AdminController extends AbstractController
@@ -19,6 +21,7 @@ final class AdminController extends AbstractController
     public function __construct(
         private readonly TriageSubmissionRepository $triageRepository,
         private readonly UserRepository $userRepository,
+        private readonly Connection $dbal,
     ) {}
 
     #[Route('/api/admin/stats', methods: ['GET'], name: 'api_admin_stats')]
@@ -94,6 +97,22 @@ final class AdminController extends AbstractController
         ]);
     }
 
+    #[Route('/api/admin/failed-messages', methods: ['GET'], name: 'api_admin_failed_messages')]
+    public function failedMessages(): JsonResponse
+    {
+        try {
+            $rows = $this->dbal->fetchAllAssociative(
+                "SELECT id, body, headers, created_at FROM messenger_messages WHERE queue_name = 'failed' ORDER BY created_at DESC"
+            );
+        } catch (DBALException) {
+            return $this->json(['data' => []], 200);
+        }
+
+        return $this->json([
+            'data' => array_map(fn(array $row) => $this->serializeFailedMessage($row), $rows),
+        ]);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -125,5 +144,28 @@ final class AdminController extends AbstractController
         }
 
         return $data;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function serializeFailedMessage(array $row): array
+    {
+        $headers = json_decode($row['headers'], true) ?? [];
+        $body = $row['body'];
+        $preview = \mb_substr(\trim((string) \json_decode($body, true)['description'] ?? $body), 0, 120);
+
+        return [
+            'id' => (int) $row['id'],
+            'type' => 'failed_message',
+            'attributes' => [
+                'messageId' => (int) $row['id'],
+                'type' => $headers['X-Message-Class'] ?? 'Unknown',
+                'failedAt' => (new \DateTimeImmutable($row['created_at']))->format('c'),
+                'error' => $headers['X-Failed-Description'] ?? 'Unknown error',
+                'preview' => $preview,
+            ],
+        ];
     }
 }

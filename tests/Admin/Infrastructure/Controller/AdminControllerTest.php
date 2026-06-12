@@ -240,4 +240,39 @@ final class AdminControllerTest extends WebTestCase
 
         $this->assertResponseStatusCodeSame(401);
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    // GET /api/admin/failed-messages
+    // ─────────────────────────────────────────────────────────────────
+
+    public function testFailedMessagesReturns200(): void
+    {
+        $client = $this->createAdminClient();
+
+        $client->jsonRequest('GET', '/api/admin/failed-messages');
+
+        $this->assertResponseStatusCodeSame(200);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('data', $data);
+        $this->assertIsArray($data['data']);
+        foreach ($data['data'] as $msg) {
+            $this->assertArrayHasKey('id', $msg);
+            $this->assertSame('failed_message', $msg['type']);
+            $this->assertArrayHasKey('attributes', $msg);
+            $this->assertArrayHasKey('messageId', $msg['attributes']);
+            $this->assertArrayHasKey('type', $msg['attributes']);
+            $this->assertArrayHasKey('error', $msg['attributes']);
+            $this->assertArrayHasKey('preview', $msg['attributes']);
+            $this->assertArrayHasKey('failedAt', $msg['attributes']);
+        }
+    }
+
+    public function testFailedMessagesReturns401WithoutAuth(): void
+    {
+        $client = static::createClient();
+
+        $client->jsonRequest('GET', '/api/admin/failed-messages');
+
+        $this->assertResponseStatusCodeSame(401);
+    }
 }
