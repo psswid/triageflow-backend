@@ -113,6 +113,62 @@ final class AdminController extends AbstractController
         ]);
     }
 
+    #[Route('/api/admin/failed-messages/{id}/retry', methods: ['POST'], name: 'api_admin_failed_message_retry')]
+    public function retryFailedMessage(int $id): JsonResponse
+    {
+        try {
+            $row = $this->dbal->fetchAssociative(
+                "SELECT id FROM messenger_messages WHERE id = :id AND queue_name = 'failed'",
+                ['id' => $id]
+            );
+        } catch (DBALException) {
+            $row = false;
+        }
+
+        if ($row === false) {
+            throw new NotFoundHttpException(sprintf('Failed message "%d" not found.', $id));
+        }
+
+        try {
+            $this->dbal->executeStatement(
+                "UPDATE messenger_messages SET queue_name = 'default', delivered_at = NULL WHERE id = :id",
+                ['id' => $id]
+            );
+        } catch (DBALException $e) {
+            throw new \RuntimeException('Failed to retry message: ' . $e->getMessage());
+        }
+
+        return $this->json(['data' => ['id' => $id, 'status' => 'retried']], 200);
+    }
+
+    #[Route('/api/admin/failed-messages/{id}', methods: ['DELETE'], name: 'api_admin_failed_message_delete')]
+    public function deleteFailedMessage(int $id): JsonResponse
+    {
+        try {
+            $row = $this->dbal->fetchAssociative(
+                "SELECT id FROM messenger_messages WHERE id = :id AND queue_name = 'failed'",
+                ['id' => $id]
+            );
+        } catch (DBALException) {
+            $row = false;
+        }
+
+        if ($row === false) {
+            throw new NotFoundHttpException(sprintf('Failed message "%d" not found.', $id));
+        }
+
+        try {
+            $this->dbal->executeStatement(
+                "DELETE FROM messenger_messages WHERE id = :id",
+                ['id' => $id]
+            );
+        } catch (DBALException $e) {
+            throw new \RuntimeException('Failed to delete message: ' . $e->getMessage());
+        }
+
+        return $this->json(['data' => ['id' => $id, 'status' => 'deleted']], 200);
+    }
+
     /**
      * @return array<string, mixed>
      */

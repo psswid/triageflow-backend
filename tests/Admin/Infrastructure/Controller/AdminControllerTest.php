@@ -275,4 +275,106 @@ final class AdminControllerTest extends WebTestCase
 
         $this->assertResponseStatusCodeSame(401);
     }
+
+    /**
+     * Insert a fake failed message into messenger_messages for testing.
+     * Returns the inserted row id.
+     */
+    private function seedFailedMessage(KernelBrowser $client): int
+    {
+        $conn = $client->getContainer()->get('doctrine.dbal.default_connection');
+        $conn->executeStatement(
+            "INSERT INTO messenger_messages (body, headers, queue_name, created_at, available_at)
+             VALUES (:body, :headers, 'failed', NOW(), NOW())",
+            [
+                'body' => '{"description": "Test patient needs immediate attention for chest pain and shortness of breath"}',
+                'headers' => json_encode([
+                    'X-Message-Class' => 'App\\Triage\\Application\\Message\\ProcessTriageMessage',
+                    'X-Failed-Description' => 'Connection timed out after 5 seconds',
+                ]),
+            ]
+        );
+
+        return (int) $conn->lastInsertId();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // POST /api/admin/failed-messages/{id}/retry
+    // ─────────────────────────────────────────────────────────────────
+
+    public function testRetryFailedMessageReturns200(): void
+    {
+        $client = $this->createAdminClient();
+        $failedId = $this->seedFailedMessage($client);
+
+        $client->jsonRequest('POST', '/api/admin/failed-messages/' . $failedId . '/retry');
+
+        $this->assertResponseStatusCodeSame(200);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('data', $data);
+        $this->assertSame('retried', $data['data']['status']);
+
+        // Verify message was moved back to default queue
+        $conn = $client->getContainer()->get('doctrine.dbal.default_connection');
+        $row = $conn->fetchAssociative("SELECT queue_name FROM messenger_messages WHERE id = :id", ['id' => $failedId]);
+        $this->assertSame('default', $row['queue_name']);
+    }
+
+    public function testRetryFailedMessageReturns404ForMissing(): void
+    {
+        $client = $this->createAdminClient();
+
+        $client->jsonRequest('POST', '/api/admin/failed-messages/999999/retry');
+
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testRetryFailedMessageReturns401WithoutAuth(): void
+    {
+        $client = static::createClient();
+
+        $client->jsonRequest('POST', '/api/admin/failed-messages/1/retry');
+
+        $this->assertResponseStatusCodeSame(401);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // DELETE /api/admin/failed-messages/{id}
+    // ─────────────────────────────────────────────────────────────────
+
+    public function testDeleteFailedMessageReturns200(): void
+    {
+        $client = $this->createAdminClient();
+        $failedId = $this->seedFailedMessage($client);
+
+        $client->jsonRequest('DELETE', '/api/admin/failed-messages/' . $failedId);
+
+        $this->assertResponseStatusCodeSame(200);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('data', $data);
+        $this->assertSame('deleted', $data['data']['status']);
+
+        // Verify message was deleted
+        $conn = $client->getContainer()->get('doctrine.dbal.default_connection');
+        $row = $conn->fetchAssociative("SELECT id FROM messenger_messages WHERE id = :id", ['id' => $failedId]);
+        $this->assertFalse($row, 'Message should have been deleted');
+    }
+
+    public function testDeleteFailedMessageReturns404ForMissing(): void
+    {
+        $client = $this->createAdminClient();
+
+        $client->jsonRequest('DELETE', '/api/admin/failed-messages/999999');
+
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testDeleteFailedMessageReturns401WithoutAuth(): void
+    {
+        $client = static::createClient();
+
+        $client->jsonRequest('DELETE', '/api/admin/failed-messages/1');
+
+        $this->assertResponseStatusCodeSame(401);
+    }
 }
