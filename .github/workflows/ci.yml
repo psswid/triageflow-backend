@@ -59,7 +59,7 @@ jobs:
           echo 'MAILER_DSN=smtp://localhost:1025' >> .env
           echo 'JWT_SECRET_KEY=%kernel.project_dir%/config/jwt/private.pem' >> .env
           echo 'JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/public.pem' >> .env
-          echo 'JWT_PASSPHRASE=test' >> .env
+          echo 'JWT_PASSPHRASE=your-passphrase-here' >> .env
 
       - name: Setup test database
         run: |
@@ -103,7 +103,7 @@ jobs:
           echo 'MAILER_DSN=smtp://localhost:1025' >> .env
           echo 'JWT_SECRET_KEY=%kernel.project_dir%/config/jwt/private.pem' >> .env
           echo 'JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/public.pem' >> .env
-          echo 'JWT_PASSPHRASE=test' >> .env
+          echo 'JWT_PASSPHRASE=your-passphrase-here' >> .env
 
       - name: PHPStan analysis
         run: php vendor/bin/phpstan analyse --level=5 --no-progress
