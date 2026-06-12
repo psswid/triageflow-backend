@@ -54,6 +54,12 @@ jobs:
         run: |
           cp .env.test .env
           echo 'DEFAULT_URI=http://localhost:5173' >> .env
+          echo "CORS_ALLOW_ORIGIN='^https?://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?$'" >> .env
+          echo 'MESSENGER_TRANSPORT_DSN=doctrine://default?auto_setup=1' >> .env
+          echo 'MAILER_DSN=smtp://localhost:1025' >> .env
+          echo 'JWT_SECRET_KEY=%kernel.project_dir%/config/jwt/private.pem' >> .env
+          echo 'JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/public.pem' >> .env
+          echo 'JWT_PASSPHRASE=test' >> .env
 
       - name: Setup test database
         run: |
@@ -92,6 +98,12 @@ jobs:
         run: |
           cp .env.test .env
           echo 'DEFAULT_URI=http://localhost:5173' >> .env
+          echo "CORS_ALLOW_ORIGIN='^https?://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?$'" >> .env
+          echo 'MESSENGER_TRANSPORT_DSN=doctrine://default?auto_setup=1' >> .env
+          echo 'MAILER_DSN=smtp://localhost:1025' >> .env
+          echo 'JWT_SECRET_KEY=%kernel.project_dir%/config/jwt/private.pem' >> .env
+          echo 'JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/public.pem' >> .env
+          echo 'JWT_PASSPHRASE=test' >> .env
 
       - name: PHPStan analysis
         run: php vendor/bin/phpstan analyse --level=5 --no-progress
