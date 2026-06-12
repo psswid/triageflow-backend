@@ -39,7 +39,7 @@ final class RegistrationController extends AbstractController
             ],
             'password' => [
                 new Assert\NotBlank(),
-                new Assert\Length(['min' => 8]),
+                new Assert\Length(min: 8),
             ],
             'password_confirmation' => [
                 new Assert\NotBlank(),
