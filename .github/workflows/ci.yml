@@ -31,9 +31,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create .env for Symfony boot
-        run: cp .env.test .env
-
       - name: Setup PHP 8.4
         uses: shivammathur/setup-php@v2
         with:
@@ -50,8 +47,11 @@ jobs:
           restore-keys: |
             composer-
 
-      - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+      - name: Install dependencies (skip auto-scripts — no server needed)
+        run: composer install --no-interaction --prefer-dist --no-scripts
+
+      - name: Create .env for Symfony console
+        run: cp .env.test .env
 
       - name: Setup test database
         run: |
@@ -66,9 +66,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Create .env for Symfony boot
-        run: cp .env.test .env
 
       - name: Setup PHP 8.4
         uses: shivammathur/setup-php@v2
@@ -86,8 +83,11 @@ jobs:
           restore-keys: |
             composer-
 
-      - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
+      - name: Install dependencies (skip auto-scripts — no server needed)
+        run: composer install --no-interaction --prefer-dist --no-scripts
+
+      - name: Create .env for Symfony console
+        run: cp .env.test .env
 
       - name: PHPStan analysis
         run: php vendor/bin/phpstan analyse --level=5 --no-progress
