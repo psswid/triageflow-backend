@@ -16,6 +16,7 @@ use App\User\Domain\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
@@ -27,6 +28,7 @@ final class ProcessSyntheticCaseMessageHandlerTest extends TestCase
     private TriageAnalyzerInterface&MockObject $analyzer;
     private EntityManagerInterface&MockObject $entityManager;
     private MessageBusInterface&MockObject $messageBus;
+    private LoggerInterface&MockObject $logger;
     private User $systemUser;
 
     protected function setUp(): void
@@ -35,6 +37,7 @@ final class ProcessSyntheticCaseMessageHandlerTest extends TestCase
         $this->analyzer = $this->createMock(TriageAnalyzerInterface::class);
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
         $this->messageBus = $this->createMock(MessageBusInterface::class);
+        $this->logger = $this->createMock(LoggerInterface::class);
 
         $this->systemUser = User::register(
             'system@triageflow.local',
@@ -48,6 +51,7 @@ final class ProcessSyntheticCaseMessageHandlerTest extends TestCase
             $this->repository,
             $this->analyzer,
             $this->entityManager,
+            $this->logger,
             $this->messageBus,
         );
     }

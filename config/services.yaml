@@ -42,6 +42,10 @@ services:
             $maxTokens: '%ai.openrouter.max_tokens%'
             $temperature: '%ai.openrouter.temperature%'
 
+    App\Shared\Infrastructure\Logging\CorrelationIdProcessor:
+        tags:
+            - { name: monolog.processor }
+
     App\User\Infrastructure\Controller\RegistrationController:
         arguments:
             $defaultUri: '%env(DEFAULT_URI)%'

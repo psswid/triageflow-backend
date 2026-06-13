@@ -16,6 +16,7 @@ use App\User\Domain\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Uid\Uuid;
 
 final class ProcessTriageMessageHandlerTest extends TestCase
@@ -23,6 +24,7 @@ final class ProcessTriageMessageHandlerTest extends TestCase
     private TriageSubmissionRepository&MockObject $repository;
     private TriageAnalyzerInterface&MockObject $analyzer;
     private EntityManagerInterface&MockObject $entityManager;
+    private LoggerInterface&MockObject $logger;
     private User $user;
 
     protected function setUp(): void
@@ -30,6 +32,7 @@ final class ProcessTriageMessageHandlerTest extends TestCase
         $this->repository = $this->createMock(TriageSubmissionRepository::class);
         $this->analyzer = $this->createMock(TriageAnalyzerInterface::class);
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
+        $this->logger = $this->createMock(LoggerInterface::class);
 
         $this->user = User::register(
             'test-' . uniqid() . '@example.com',
@@ -43,6 +46,7 @@ final class ProcessTriageMessageHandlerTest extends TestCase
             $this->repository,
             $this->analyzer,
             $this->entityManager,
+            $this->logger,
         );
     }
 

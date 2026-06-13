@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Shared\Infrastructure\Ai;
 
+use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -31,6 +32,7 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
         private int $timeout,
         private int $maxTokens,
         private float $temperature,
+        private ?LoggerInterface $logger = null,
         private string $httpReferer = 'http://localhost',
         private string $xTitle = 'TriageFlow',
     ) {}
@@ -56,6 +58,7 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
     public function chat(array $messages, ?string $model = null): string
     {
         $currentModel = $model ?? $this->defaultModel;
+        $startTime = microtime(true);
         $attempts = 0;
         $lastException = null;
         $triedFallback = false;
@@ -85,6 +88,20 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
                 /** @var array{choices: array<int, array{message: array{content: string}}>} $data */
                 $data = $response->toArray();
 
+                $logContext = [
+                    'model' => $currentModel,
+                    'duration_ms' => round((microtime(true) - $startTime) * 1000),
+                    'success' => true,
+                    'attempts' => $attempts + 1,
+                    'token_usage' => $data['usage'] ?? null,
+                ];
+
+                if ($attempts > 0) {
+                    $this->logger?->notice('OpenRouter API call succeeded after retry', $logContext);
+                } else {
+                    $this->logger?->info('OpenRouter API call completed', $logContext);
+                }
+
                 return $data['choices'][0]['message']['content'];
             } catch (\Throwable $e) {
                 // Don't wrap fatal errors (e.g. TypeError from bad response structure)
@@ -95,6 +112,12 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
                 // ── Rate limited (429): try fallback model ──
                 if ($e instanceof HttpExceptionInterface && $e->getResponse()->getStatusCode() === 429) {
                     if (!$triedFallback && $currentModel !== $this->fallbackModel) {
+                        $this->logger?->warning('OpenRouter API rate limited on primary model, switching to fallback', [
+                            'model' => $currentModel,
+                            'fallback_model' => $this->fallbackModel,
+                            'duration_ms' => round((microtime(true) - $startTime) * 1000),
+                        ]);
+
                         $currentModel = $this->fallbackModel;
                         $triedFallback = true;
                         // Don't consume a retry attempt — fallback switch is a free retry
@@ -103,16 +126,29 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
                         continue;
                     }
 
+                    $this->logger?->error('OpenRouter API rate limited on all models', [
+                        'model' => $currentModel,
+                        'duration_ms' => round((microtime(true) - $startTime) * 1000),
+                        'success' => false,
+                        'error' => 'rate_limited_all_models',
+                    ]);
+
                     throw new OpenRouterException(
-                        sprintf(
-                            'OpenRouter API rate limited on both default and fallback models',
-                        ),
+                        'OpenRouter API rate limited on both default and fallback models',
                         previous: $e,
                     );
                 }
 
                 // ── Non-429 HTTP errors — throw immediately ──
                 if (!$e instanceof TransportExceptionInterface) {
+                    $this->logger?->error('OpenRouter API non-retryable error', [
+                        'model' => $currentModel,
+                        'duration_ms' => round((microtime(true) - $startTime) * 1000),
+                        'success' => false,
+                        'error' => $e->getMessage(),
+                        'error_class' => $e::class,
+                    ]);
+
                     throw new OpenRouterException(
                         sprintf('OpenRouter API error: %s', $e->getMessage()),
                         previous: $e,
@@ -128,6 +164,15 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
                 }
             }
         }
+
+        $this->logger?->error('OpenRouter API call failed after all retries', [
+            'model' => $currentModel,
+            'duration_ms' => round((microtime(true) - $startTime) * 1000),
+            'success' => false,
+            'error' => $lastException?->getMessage() ?? 'unknown error',
+            'error_class' => $lastException ? $lastException::class : null,
+            'attempts' => self::MAX_RETRIES,
+        ]);
 
         throw new OpenRouterException(
             sprintf(

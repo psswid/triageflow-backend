@@ -29,6 +29,7 @@ final class OpenRouterClientTest extends TestCase
     {
         return new OpenRouterClient(
             httpClient: $httpClient,
+            logger: null,
             baseUrl: self::BASE_URL,
             defaultModel: self::DEFAULT_MODEL,
             fallbackModel: self::FALLBACK_MODEL,

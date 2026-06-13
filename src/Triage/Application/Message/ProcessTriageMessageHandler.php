@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Triage\Application\Message;
 
+use App\Shared\Infrastructure\Logging\CorrelationIdProcessor;
 use App\Triage\Application\Service\TriageAnalyzerInterface;
 use App\Triage\Application\Service\TriageAnalysisFailedException;
 use App\Triage\Domain\Entity\TriageOutcome;
 use App\Triage\Domain\Entity\TriageStatus;
 use App\Triage\Domain\Repository\TriageSubmissionRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Processes a Triage Submission that has a user answer awaiting AI analysis.
@@ -31,6 +34,7 @@ final readonly class ProcessTriageMessageHandler
         private TriageSubmissionRepository $repository,
         private TriageAnalyzerInterface $analyzer,
         private EntityManagerInterface $entityManager,
+        private LoggerInterface $logger,
     ) {}
 
     /**
@@ -38,60 +42,85 @@ final readonly class ProcessTriageMessageHandler
      */
     public function __invoke(ProcessTriageMessage $message): void
     {
-        $submission = $this->repository->findById($message->submissionId);
-
-        if ($submission === null) {
-            throw new \RuntimeException(
-                sprintf(
-                    'Triage Submission not found for ID "%s".',
-                    $message->submissionId->toRfc4122(),
-                ),
-            );
-        }
-
-        // No-op: already in a terminal state
-        if ($submission->getStatus() === TriageStatus::Completed
-            || $submission->getStatus() === TriageStatus::Failed) {
-            return;
-        }
-
-        // No-op: Pending submission has only the initial description — nothing to process
-        if ($submission->getStatus() === TriageStatus::Pending) {
-            return;
-        }
-
-        // Extract the last user answer from the conversation history.
-        $answerContent = $this->extractLastAnswer($submission->getConversationHistory());
-        if ($answerContent === null) {
-            // AwaitingAnswer with no answer yet (e.g., dispatched from initial submit)
-            return;
-        }
+        $startTime = microtime(true);
+        $correlationId = Uuid::v4()->toRfc4122();
+        CorrelationIdProcessor::setCorrelationId($correlationId);
+        $status = 'noop';
 
         try {
-            $result = $this->analyzer->analyzeFollowUp(
-                $answerContent,
-                $submission->getConversationHistory(),
-                $submission->getCurrentTurn(),
-            );
-        } catch (TriageAnalysisFailedException) {
-            $submission->markFailed();
+            $submission = $this->repository->findById($message->submissionId);
+
+            if ($submission === null) {
+                throw new \RuntimeException(
+                    sprintf(
+                        'Triage Submission not found for ID "%s".',
+                        $message->submissionId->toRfc4122(),
+                    ),
+                );
+            }
+
+            // No-op: already in a terminal state
+            if ($submission->getStatus() === TriageStatus::Completed
+                || $submission->getStatus() === TriageStatus::Failed) {
+                $status = 'noop_already_terminal';
+
+                return;
+            }
+
+            // No-op: Pending submission has only the initial description — nothing to process
+            if ($submission->getStatus() === TriageStatus::Pending) {
+                $status = 'noop_pending';
+
+                return;
+            }
+
+            // Extract the last user answer from the conversation history.
+            $answerContent = $this->extractLastAnswer($submission->getConversationHistory());
+            if ($answerContent === null) {
+                // AwaitingAnswer with no answer yet (e.g., dispatched from initial submit)
+                $status = 'noop_no_answer';
+
+                return;
+            }
+
+            try {
+                $result = $this->analyzer->analyzeFollowUp(
+                    $answerContent,
+                    $submission->getConversationHistory(),
+                    $submission->getCurrentTurn(),
+                );
+            } catch (TriageAnalysisFailedException) {
+                $submission->markFailed();
+                $this->entityManager->flush();
+                $status = 'analysis_failed';
+
+                return;
+            }
+
+            if ($result['type'] === 'result') {
+                $outcome = TriageOutcome::create(
+                    specialist: $result['specialist'],
+                    urgency: $result['urgency'],
+                    justification: $result['justification'],
+                );
+                $submission->completeWithOutcome($outcome);
+            } else {
+                $submission->addAiQuestion($result['content']);
+            }
+
             $this->entityManager->flush();
-
-            return;
+            $status = 'success';
+        } catch (\Throwable $e) {
+            $status = 'error';
+            throw $e;
+        } finally {
+            $this->logger->info('Message handler completed', [
+                'message_class' => ProcessTriageMessage::class,
+                'submission_id' => $message->submissionId->toRfc4122(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000),
+                'status' => $status,
+            ]);
         }
-
-        if ($result['type'] === 'result') {
-            $outcome = TriageOutcome::create(
-                specialist: $result['specialist'],
-                urgency: $result['urgency'],
-                justification: $result['justification'],
-            );
-            $submission->completeWithOutcome($outcome);
-        } else {
-            $submission->addAiQuestion($result['content']);
-        }
-
-        $this->entityManager->flush();
     }
 
     /**
