@@ -86,15 +86,29 @@ final class RegistrationController extends AbstractController
         $this->userRepository->save($user);
 
         try {
+            $locale = $request->getPreferredLanguage(['en', 'pl']) ?? 'en';
+
+            if ($locale === 'pl') {
+                $subject = 'Zweryfikuj swoje konto TriageFlow';
+                $body = sprintf(
+                    "Dziękujemy za rejestrację! Zweryfikuj swój adres e-mail klikając w poniższy link:\n\n%s/verify-email?token=%s\n\nLink wygasa za 24 godziny.",
+                    $this->defaultUri,
+                    $user->getEmailVerificationToken()
+                );
+            } else {
+                $subject = 'Verify your TriageFlow account';
+                $body = sprintf(
+                    "Thank you for registering! Please verify your email address by clicking the link below:\n\n%s/verify-email?token=%s\n\nThis link expires in 24 hours.",
+                    $this->defaultUri,
+                    $user->getEmailVerificationToken()
+                );
+            }
+
             $email = (new Email())
                 ->from('noreply@triageflow.local')
                 ->to($user->getEmail())
-                ->subject('Verify your TriageFlow account')
-                ->html(sprintf(
-                    '<a href="%s/verify-email?token=%s">Verify your email</a>',
-                    $this->defaultUri,
-                    $user->getEmailVerificationToken()
-                ));
+                ->subject($subject)
+                ->text($body);
 
             $this->mailer->send($email);
         } catch (\Throwable) {
