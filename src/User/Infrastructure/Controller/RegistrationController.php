@@ -91,14 +91,14 @@ final class RegistrationController extends AbstractController
             if ($locale === 'pl') {
                 $subject = 'Zweryfikuj swoje konto TriageFlow';
                 $body = sprintf(
-                    "Dziękujemy za rejestrację! Zweryfikuj swój adres e-mail klikając w poniższy link:\n\n%s/verify-email?token=%s\n\nLink wygasa za 24 godziny.",
+                    "Dziękujemy za rejestrację! Zweryfikuj swój adres e-mail klikając w poniższy link:\n\n%s/verify-email?token=%s\n\nLink wygasa za 24 godziny.\n\n— TriageFlow",
                     $this->defaultUri,
                     $user->getEmailVerificationToken()
                 );
             } else {
                 $subject = 'Verify your TriageFlow account';
                 $body = sprintf(
-                    "Thank you for registering! Please verify your email address by clicking the link below:\n\n%s/verify-email?token=%s\n\nThis link expires in 24 hours.",
+                    "Thank you for registering! Please verify your email address by clicking the link below:\n\n%s/verify-email?token=%s\n\nThis link expires in 24 hours.\n\n— TriageFlow",
                     $this->defaultUri,
                     $user->getEmailVerificationToken()
                 );
