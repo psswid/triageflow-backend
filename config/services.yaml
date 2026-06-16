@@ -50,6 +50,15 @@ services:
         arguments:
             $defaultUri: '%env(DEFAULT_URI)%'
 
+    App\Triage\Infrastructure\Controller\TriageController:
+        arguments:
+            $triageSubmitLimiter: '@limiter.triage_submit'
+            $triageAnswerLimiter: '@limiter.triage_answer'
+
+    App\Admin\Infrastructure\Controller\SyntheticCaseController:
+        arguments:
+            $syntheticGenerateLimiter: '@limiter.synthetic_generate'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
 

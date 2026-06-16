@@ -9,6 +9,7 @@ use App\Synthetic\Application\Command\GenerateSyntheticCaseHandler;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
@@ -23,11 +24,36 @@ final class SyntheticCaseController extends AbstractController
 {
     public function __construct(
         private readonly GenerateSyntheticCaseHandler $handler,
+        private readonly RateLimiterFactory $syntheticGenerateLimiter,
     ) {}
 
     #[Route('/api/admin/synthetic/generate', methods: ['POST'], name: 'api_admin_synthetic_generate')]
     public function generate(): JsonResponse
     {
+        // ── Rate limiter ──
+        $rateLimit = $this->syntheticGenerateLimiter->create('admin')->consume(1);
+
+        if (!$rateLimit->isAccepted()) {
+            $retryAfter = $rateLimit->getRetryAfter()->getTimestamp() - \time();
+
+            return $this->json(
+                [
+                    'errors' => [[
+                        'status' => '429',
+                        'code' => 'RATE_LIMIT_EXCEEDED',
+                        'title' => 'Too Many Requests',
+                        'detail' => \sprintf(
+                            'Rate limit exceeded. You can make 2 requests per minute. Retry in %d seconds.',
+                            $retryAfter,
+                        ),
+                    ]],
+                ],
+                Response::HTTP_TOO_MANY_REQUESTS,
+                ['Retry-After' => (string) $retryAfter],
+            );
+        }
+        // ── End rate limiter ──
+
         try {
             $submission = ($this->handler)(new GenerateSyntheticCaseCommand());
         } catch (\RuntimeException $e) {

@@ -18,6 +18,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -29,6 +30,8 @@ final class TriageController extends AbstractController
         private readonly TriageSubmissionRepository $repository,
         private readonly ValidatorInterface $validator,
         private readonly MessageBusInterface $messageBus,
+        private readonly RateLimiterFactory $triageSubmitLimiter,
+        private readonly RateLimiterFactory $triageAnswerLimiter,
     ) {}
 
     #[Route('/api/triage/submit', methods: ['POST'], name: 'api_triage_submit')]
@@ -56,6 +59,36 @@ final class TriageController extends AbstractController
 
         /** @var User $user */
         $user = $this->getUser();
+
+        // ── Rate limiter ──
+        $rateLimit = $this->triageSubmitLimiter->create($user->getId()->toRfc4122())->consume(1);
+
+        if (!$rateLimit->isAccepted()) {
+            $retryAfter = $rateLimit->getRetryAfter()->getTimestamp() - \time();
+            $resetTimestamp = $rateLimit->getRetryAfter()->getTimestamp();
+
+            return $this->json(
+                [
+                    'errors' => [[
+                        'status' => '429',
+                        'code' => 'RATE_LIMIT_EXCEEDED',
+                        'title' => 'Too Many Requests',
+                        'detail' => \sprintf(
+                            'Rate limit exceeded. You can make 5 requests per minute. Retry in %d seconds.',
+                            $retryAfter,
+                        ),
+                    ]],
+                ],
+                Response::HTTP_TOO_MANY_REQUESTS,
+                [
+                    'Retry-After' => (string) $retryAfter,
+                    'X-Rate-Limit-Limit' => '5',
+                    'X-Rate-Limit-Remaining' => '0',
+                    'X-Rate-Limit-Reset' => (string) $resetTimestamp,
+                ],
+            );
+        }
+        // ── End rate limiter ──
 
         try {
             $submission = ($this->submitHandler)(new SubmitTriageCommand($data['initialDescription'], $user));
@@ -109,6 +142,31 @@ final class TriageController extends AbstractController
 
         /** @var User $user */
         $user = $this->getUser();
+
+        // ── Rate limiter ──
+        $rateLimit = $this->triageAnswerLimiter->create($user->getId()->toRfc4122())->consume(1);
+
+        if (!$rateLimit->isAccepted()) {
+            $retryAfter = $rateLimit->getRetryAfter()->getTimestamp() - \time();
+
+            return $this->json(
+                [
+                    'errors' => [[
+                        'status' => '429',
+                        'code' => 'RATE_LIMIT_EXCEEDED',
+                        'title' => 'Too Many Requests',
+                        'detail' => \sprintf(
+                            'Rate limit exceeded. You can make 5 requests per minute. Retry in %d seconds.',
+                            $retryAfter,
+                        ),
+                    ]],
+                ],
+                Response::HTTP_TOO_MANY_REQUESTS,
+                ['Retry-After' => (string) $retryAfter],
+            );
+        }
+        // ── End rate limiter ──
+
         $this->assertOwnership($submission->getUser()->getId()->toRfc4122(), $user->getId()->toRfc4122());
 
         if ($submission->getStatus() !== TriageStatus::AwaitingAnswer) {
