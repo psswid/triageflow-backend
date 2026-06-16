@@ -23,6 +23,10 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
 {
     private const int MAX_RETRIES = 3;
     private const int RETRY_DELAY_SECONDS = 2;
+    private const int RETRY_AFTER_CAP_SECONDS = 30;
+    private const int BACKOFF_BASE_MS = 2_000;
+    private const int BACKOFF_CAP_MS = 30_000;
+    private const int BACKOFF_JITTER_MS = 500;
 
     public function __construct(
         private HttpClientInterface $httpClient,
@@ -160,7 +164,7 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
                             sprintf(
                                 'OpenRouter API rate limited with Retry-After %ds (exceeds %ds cap)',
                                 $retryAfter,
-                                30,
+                                self::RETRY_AFTER_CAP_SECONDS,
                             ),
                             previous: $e,
                         );
@@ -268,19 +272,15 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
      */
     private function calculateBackoff(int $attempt, ?int $retryAfterSeconds): int
     {
-        $baseMs = 2_000;     // 2 seconds base delay
-        $capMs = 30_000;     // 30 seconds maximum delay
-        $jitterMs = 500;     // up to 500ms random jitter
-
-        $exponentialDelay = (int) min($capMs, $baseMs * 2 ** ($attempt - 1));
-        $jitter = \random_int(0, $jitterMs);
+        $exponentialDelay = (int) min(self::BACKOFF_CAP_MS, self::BACKOFF_BASE_MS * 2 ** ($attempt - 1));
+        $jitter = \random_int(0, self::BACKOFF_JITTER_MS);
         $ourDelay = $exponentialDelay + $jitter;
 
         if ($retryAfterSeconds !== null) {
-            if ($retryAfterSeconds > 30) {
+            if ($retryAfterSeconds > self::RETRY_AFTER_CAP_SECONDS) {
                 $this->logger?->warning('OpenRouter Retry-After exceeds cap, giving up', [
                     'retry_after' => $retryAfterSeconds,
-                    'cap' => 30,
+                    'cap' => self::RETRY_AFTER_CAP_SECONDS,
                 ]);
 
                 return -1; // Signal: do not retry
