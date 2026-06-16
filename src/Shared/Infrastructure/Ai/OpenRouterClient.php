@@ -117,7 +117,9 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
                 }
 
                 // ── Rate limited (429): try fallback model ──
-                if ($e instanceof HttpExceptionInterface && $e->getResponse()->getStatusCode() === 429) {
+                $response = $e instanceof HttpExceptionInterface ? $e->getResponse() : null;
+
+                if ($response?->getStatusCode() === 429) {
                     if (!$triedFallback && $currentModel !== $this->fallbackModel) {
                         $this->logger?->warning('OpenRouter API rate limited on primary model, switching to fallback', [
                             'model' => $currentModel,
@@ -135,7 +137,7 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
 
                     // ── Fallback model 429: retry with exponential backoff ──
                     $lastException = $e;
-                    $retryAfter = $this->parseRetryAfter($e->getResponse());
+                    $retryAfter = $this->parseRetryAfter($response);
                     $attempts++;
 
                     if ($attempts >= self::MAX_RETRIES) {

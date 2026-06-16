@@ -64,7 +64,7 @@ final class TriageController extends AbstractController
         $rateLimit = $this->triageSubmitLimiter->create($user->getId()->toRfc4122())->consume(1);
 
         if (!$rateLimit->isAccepted()) {
-            $retryAfter = $rateLimit->getRetryAfter()->getTimestamp() - \time();
+            $retryAfter = max(1, $rateLimit->getRetryAfter()->getTimestamp() - \time());
             $resetTimestamp = $rateLimit->getRetryAfter()->getTimestamp();
 
             return $this->json(
@@ -74,7 +74,8 @@ final class TriageController extends AbstractController
                         'code' => 'RATE_LIMIT_EXCEEDED',
                         'title' => 'Too Many Requests',
                         'detail' => \sprintf(
-                            'Rate limit exceeded. You can make 5 requests per minute. Retry in %d seconds.',
+                            'Rate limit exceeded (max %d/min). Retry in %d seconds.',
+                            $rateLimit->getLimit(),
                             $retryAfter,
                         ),
                     ]],
@@ -82,7 +83,7 @@ final class TriageController extends AbstractController
                 Response::HTTP_TOO_MANY_REQUESTS,
                 [
                     'Retry-After' => (string) $retryAfter,
-                    'X-Rate-Limit-Limit' => '5',
+                    'X-Rate-Limit-Limit' => (string) $rateLimit->getLimit(),
                     'X-Rate-Limit-Remaining' => '0',
                     'X-Rate-Limit-Reset' => (string) $resetTimestamp,
                 ],
@@ -147,7 +148,8 @@ final class TriageController extends AbstractController
         $rateLimit = $this->triageAnswerLimiter->create($user->getId()->toRfc4122())->consume(1);
 
         if (!$rateLimit->isAccepted()) {
-            $retryAfter = $rateLimit->getRetryAfter()->getTimestamp() - \time();
+            $retryAfter = max(1, $rateLimit->getRetryAfter()->getTimestamp() - \time());
+            $resetTimestamp = $rateLimit->getRetryAfter()->getTimestamp();
 
             return $this->json(
                 [
@@ -156,13 +158,19 @@ final class TriageController extends AbstractController
                         'code' => 'RATE_LIMIT_EXCEEDED',
                         'title' => 'Too Many Requests',
                         'detail' => \sprintf(
-                            'Rate limit exceeded. You can make 5 requests per minute. Retry in %d seconds.',
+                            'Rate limit exceeded (max %d/min). Retry in %d seconds.',
+                            $rateLimit->getLimit(),
                             $retryAfter,
                         ),
                     ]],
                 ],
                 Response::HTTP_TOO_MANY_REQUESTS,
-                ['Retry-After' => (string) $retryAfter],
+                [
+                    'Retry-After' => (string) $retryAfter,
+                    'X-Rate-Limit-Limit' => (string) $rateLimit->getLimit(),
+                    'X-Rate-Limit-Remaining' => '0',
+                    'X-Rate-Limit-Reset' => (string) $resetTimestamp,
+                ],
             );
         }
         // ── End rate limiter ──
