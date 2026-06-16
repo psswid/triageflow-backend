@@ -1,0 +1,16 @@
+framework:
+    rate_limiter:
+        triage_submit:
+            policy: 'token_bucket'
+            limit: 5
+            rate: { interval: '1 minute' }
+
+        triage_answer:
+            policy: 'token_bucket'
+            limit: 5
+            rate: { interval: '1 minute' }
+
+        synthetic_generate:
+            policy: 'token_bucket'
+            limit: 2
+            rate: { interval: '1 minute' }
