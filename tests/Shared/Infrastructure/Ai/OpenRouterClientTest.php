@@ -311,7 +311,7 @@ final class OpenRouterClientTest extends TestCase
         $this->assertSame(self::FALLBACK_MODEL, $modelsUsed[1]);
     }
 
-    public function testChatThrowsWhenBothModelsGet429(): void
+    public function testChatRetriesWithBackoffWhenBothModelsGet429(): void
     {
         $callCount = 0;
 
@@ -324,16 +324,18 @@ final class OpenRouterClientTest extends TestCase
         $client = $this->createClient($httpClient);
 
         $this->expectException(OpenRouterException::class);
-        $this->expectExceptionMessageMatches('/rate limited on both/i');
+        $this->expectExceptionMessageMatches('/rate limited after.*retries/i');
 
         try {
             $client->chat([['role' => 'user', 'content' => 'Hello']]);
         } finally {
-            $this->assertSame(2, $callCount, 'Expected exactly 2 calls (default + fallback)');
+            // Call 1: default model 429 → free fallback switch (no attempt consumed)
+            // Call 2-4: fallback model 429 → exponential backoff retries (attempts 1-3)
+            $this->assertSame(4, $callCount, 'Expected 4 calls (default + 3 fallback backoff retries)');
         }
     }
 
-    public function testChatThrowsImmediatelyOn429WhenFallbackAlreadyPassed(): void
+    public function testChatRetriesWithBackoffOn429WhenFallbackAlreadyPassed(): void
     {
         $callCount = 0;
 
@@ -346,13 +348,17 @@ final class OpenRouterClientTest extends TestCase
         $client = $this->createClient($httpClient);
 
         $this->expectException(OpenRouterException::class);
+        $this->expectExceptionMessageMatches('/rate limited after.*retries/i');
 
-        // Pass the fallback model explicitly — client has nothing left to switch to,
-        // so it should throw on the first 429 without attempting the already-used fallback again.
+        // Pass the fallback model explicitly — no free switch possible, so
+        // the client enters exponential backoff retries immediately.
         try {
             $client->chat([['role' => 'user', 'content' => 'Hello']], self::FALLBACK_MODEL);
         } finally {
-            $this->assertSame(1, $callCount, 'Expected exactly 1 call when model is already the fallback');
+            // Call 1: fallback model 429 → attempt 1 → backoff
+            // Call 2: fallback model 429 → attempt 2 → backoff
+            // Call 3: fallback model 429 → attempt 3 → throw (MAX_RETRIES exhausted)
+            $this->assertSame(3, $callCount, 'Expected 3 calls (3 backoff retries on fallback model)');
         }
     }
 

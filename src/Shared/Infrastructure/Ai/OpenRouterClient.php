@@ -8,6 +8,7 @@ use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * Low-level HTTP client wrapper for the OpenRouter chat completion API.
@@ -41,8 +42,10 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
      * Send messages to the OpenRouter chat completion endpoint.
      *
      * Retry strategy:
-     *   - HTTP 429 (rate limited):   Switch to $fallbackModel and retry immediately.
-     *                                 If both models are rate limited, throw.
+     *   - HTTP 429 (rate limited):   Switch to $fallbackModel and retry immediately
+     *                                 (free retry, no attempt consumed). Subsequent
+     *                                 429s on fallback model retry up to MAX_RETRIES
+     *                                 with exponential backoff + Retry-After awareness.
      *   - TransportExceptionInterface: Retry up to MAX_RETRIES times with
      *                                 exponential backoff (2s, 4s, ...).
      *   - Other HTTP errors (4xx, 5xx): Throw immediately — caller must
@@ -126,17 +129,54 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
                         continue;
                     }
 
-                    $this->logger?->error('OpenRouter API rate limited on all models', [
+                    // ── Fallback model 429: retry with exponential backoff ──
+                    $lastException = $e;
+                    $retryAfter = $this->parseRetryAfter($e->getResponse());
+                    $attempts++;
+
+                    if ($attempts >= self::MAX_RETRIES) {
+                        $this->logger?->error('OpenRouter API rate limited after all retries', [
+                            'model' => $currentModel,
+                            'attempts' => $attempts,
+                            'duration_ms' => round((microtime(true) - $startTime) * 1000),
+                            'success' => false,
+                            'error' => 'rate_limited_exhausted',
+                        ]);
+
+                        throw new OpenRouterException(
+                            sprintf(
+                                'OpenRouter API rate limited after %d retries on fallback model "%s"',
+                                $attempts,
+                                $currentModel,
+                            ),
+                            previous: $e,
+                        );
+                    }
+
+                    $backoffMs = $this->calculateBackoff($attempts, $retryAfter);
+
+                    if ($backoffMs < 0) {
+                        throw new OpenRouterException(
+                            sprintf(
+                                'OpenRouter API rate limited with Retry-After %ds (exceeds %ds cap)',
+                                $retryAfter,
+                                30,
+                            ),
+                            previous: $e,
+                        );
+                    }
+
+                    $this->logger?->warning('OpenRouter API rate limited on fallback model, retrying with backoff', [
                         'model' => $currentModel,
+                        'attempt' => $attempts,
+                        'delay_ms' => $backoffMs,
+                        'retry_after' => $retryAfter,
                         'duration_ms' => round((microtime(true) - $startTime) * 1000),
-                        'success' => false,
-                        'error' => 'rate_limited_all_models',
                     ]);
 
-                    throw new OpenRouterException(
-                        'OpenRouter API rate limited on both default and fallback models',
-                        previous: $e,
-                    );
+                    \usleep($backoffMs * 1_000);
+
+                    continue;
                 }
 
                 // ── Non-429 HTTP errors — throw immediately ──
@@ -182,5 +222,73 @@ final readonly class OpenRouterClient implements OpenRouterClientInterface
             ),
             previous: $lastException,
         );
+    }
+
+    /**
+     * Parse the Retry-After header from an OpenRouter response.
+     *
+     * Handles both numeric seconds (e.g. "15") and HTTP-date
+     * (e.g. "Wed, 21 Oct 2024 07:28:00 GMT") formats.
+     *
+     * @param ResponseInterface $response The HTTP response
+     *
+     * @return int|null Seconds to wait, or null if header is absent/unparseable
+     */
+    private function parseRetryAfter(ResponseInterface $response): ?int
+    {
+        $headers = $response->getHeaders(false);
+
+        if (!isset($headers['retry-after']) || $headers['retry-after'] === []) {
+            return null;
+        }
+
+        $value = trim($headers['retry-after'][0]);
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        $timestamp = strtotime($value);
+
+        if ($timestamp === false) {
+            return null;
+        }
+
+        return max(0, $timestamp - time());
+    }
+
+    /**
+     * Calculate the backoff delay in milliseconds using exponential backoff
+     * with jitter, respecting the server's Retry-After header.
+     *
+     * @param int      $attempt          The current retry attempt (1-based)
+     * @param int|null $retryAfterSeconds The Retry-After value in seconds, if available
+     *
+     * @return int Delay in milliseconds. Returns -1 if Retry-After exceeds cap (signal to give up).
+     */
+    private function calculateBackoff(int $attempt, ?int $retryAfterSeconds): int
+    {
+        $baseMs = 2_000;     // 2 seconds base delay
+        $capMs = 30_000;     // 30 seconds maximum delay
+        $jitterMs = 500;     // up to 500ms random jitter
+
+        $exponentialDelay = (int) min($capMs, $baseMs * 2 ** ($attempt - 1));
+        $jitter = \random_int(0, $jitterMs);
+        $ourDelay = $exponentialDelay + $jitter;
+
+        if ($retryAfterSeconds !== null) {
+            if ($retryAfterSeconds > 30) {
+                $this->logger?->warning('OpenRouter Retry-After exceeds cap, giving up', [
+                    'retry_after' => $retryAfterSeconds,
+                    'cap' => 30,
+                ]);
+
+                return -1; // Signal: do not retry
+            }
+
+            return max($ourDelay, $retryAfterSeconds * 1_000);
+        }
+
+        return $ourDelay;
     }
 }
