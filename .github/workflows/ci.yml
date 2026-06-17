@@ -72,8 +72,31 @@ jobs:
           php bin/console doctrine:database:create --if-not-exists --no-interaction
           php bin/console doctrine:migrations:migrate --no-interaction
 
-      - name: Run tests
-        run: php bin/phpunit --configuration phpunit.dist.xml
+      - name: Run tests with coverage
+        run: php bin/phpunit --configuration phpunit.dist.xml --coverage-clover
+
+      - name: Check coverage threshold (≥80%)
+        run: |
+          php -r '
+            $file = "var/coverage/clover.xml";
+            if (!file_exists($file)) {
+              fwrite(STDERR, "ERROR: $file not found — coverage run may have failed\n");
+              exit(1);
+            }
+            $xml = simplexml_load_file($file);
+            $metrics = $xml->project->metrics;
+            $covered = (int)$metrics["coveredstatements"];
+            $total = (int)$metrics["statements"];
+            $pct = $total > 0 ? round($covered / $total * 100, 2) : 0;
+            echo "Coverage: {$pct}%\n";
+            exit($pct >= 80 ? 0 : 1);
+          '
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: var/coverage/clover.xml
 
   static-analysis:
     runs-on: ubuntu-latest
