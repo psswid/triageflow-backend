@@ -6,6 +6,7 @@ namespace App\Tests\Admin\Infrastructure\Controller;
 
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpFoundation\Response;
 
 final class AdminControllerTest extends WebTestCase
 {
@@ -193,6 +194,84 @@ final class AdminControllerTest extends WebTestCase
         $client->jsonRequest('POST', '/api/admin/synthetic/generate');
 
         $this->assertResponseStatusCodeSame(401);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // POST /api/admin/synthetic/generate — Rate limiting
+    // ─────────────────────────────────────────────────────────────────
+
+    public function testSyntheticGenerateReturns429WhenRateLimitExceeded(): void
+    {
+        $client = $this->createAdminClient();
+        $client->disableReboot();
+
+        // Clear rate limiter cache to ensure no cross-test contamination
+        $client->getContainer()->get('cache.rate_limiter')->clear();
+
+        // Ensure system user exists in test DB
+        $this->ensureSystemUserExists($client);
+
+        // First two requests consume rate limiter tokens (2 max per minute)
+        \App\Tests\Triage\Infrastructure\Controller\TestTriageAnalyzer::willReturnResultOnNextCall();
+        $client->jsonRequest('POST', '/api/admin/synthetic/generate');
+        $this->assertNotSame(Response::HTTP_TOO_MANY_REQUESTS, $client->getResponse()->getStatusCode());
+
+        \App\Tests\Triage\Infrastructure\Controller\TestTriageAnalyzer::willReturnResultOnNextCall();
+        $client->jsonRequest('POST', '/api/admin/synthetic/generate');
+        $this->assertNotSame(Response::HTTP_TOO_MANY_REQUESTS, $client->getResponse()->getStatusCode());
+
+        // Third request should be rejected by the rate limiter
+        $client->jsonRequest('POST', '/api/admin/synthetic/generate');
+
+        $this->assertResponseStatusCodeSame(Response::HTTP_TOO_MANY_REQUESTS);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertArrayHasKey('errors', $data);
+        $this->assertSame('429', $data['errors'][0]['status']);
+        $this->assertSame('RATE_LIMIT_EXCEEDED', $data['errors'][0]['code']);
+
+        // Verify rate limit headers
+        $response = $client->getResponse();
+        $this->assertTrue($response->headers->has('Retry-After'));
+        $this->assertIsNumeric($response->headers->get('Retry-After'));
+        $this->assertSame('2', $response->headers->get('X-Rate-Limit-Limit'));
+        $this->assertSame('0', $response->headers->get('X-Rate-Limit-Remaining'));
+    }
+
+    public function testSyntheticGenerateReturns201WithinLimit(): void
+    {
+        $client = $this->createAdminClient();
+        $client->disableReboot();
+
+        // Clear rate limiter cache to ensure no cross-test contamination
+        $client->getContainer()->get('cache.rate_limiter')->clear();
+
+        // Ensure system user exists in test DB
+        $this->ensureSystemUserExists($client);
+
+        \App\Tests\Triage\Infrastructure\Controller\TestTriageAnalyzer::willReturnResultOnNextCall();
+
+        $client->jsonRequest('POST', '/api/admin/synthetic/generate');
+
+        $this->assertNotSame(Response::HTTP_TOO_MANY_REQUESTS, $client->getResponse()->getStatusCode());
+    }
+
+    /**
+     * Ensure the system user (UUID 00000000-...-0001) exists in the test DB.
+     */
+    private function ensureSystemUserExists(KernelBrowser $client): void
+    {
+        $entityManager = $client->getContainer()->get('doctrine.orm.entity_manager');
+        $userRepo = $client->getContainer()->get(\App\User\Domain\Repository\UserRepository::class);
+
+        $systemUser = $userRepo->findById(\Symfony\Component\Uid\Uuid::fromString('00000000-0000-0000-0000-000000000001'));
+        if ($systemUser === null) {
+            $systemUser = \App\User\Domain\Entity\User::register('system@triageflow.local', '');
+            $ref = new \ReflectionProperty($systemUser, 'id');
+            $ref->setAccessible(true);
+            $ref->setValue($systemUser, \Symfony\Component\Uid\Uuid::fromString('00000000-0000-0000-0000-000000000001'));
+            $entityManager->persist($systemUser);
+            $entityManager->flush();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────

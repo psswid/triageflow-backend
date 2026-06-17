@@ -362,6 +362,112 @@ final class OpenRouterClientTest extends TestCase
         }
     }
 
+    public function test429WithRetryAfterNumericSecondsDecreasesBackoff(): void
+    {
+        $callCount = 0;
+
+        $httpClient = new MockHttpClient(function () use (&$callCount): MockResponse {
+            $callCount++;
+
+            return new MockResponse('{"error":"Rate limited"}', [
+                'http_code' => 429,
+                'response_headers' => ['Retry-After' => '10'],
+            ]);
+        });
+
+        $client = $this->createClient($httpClient);
+
+        $this->expectException(OpenRouterException::class);
+        $this->expectExceptionMessageMatches('/rate limited after.*retries/i');
+
+        try {
+            $client->chat([['role' => 'user', 'content' => 'Hello']]);
+        } finally {
+            // Call 1: default model 429 → free fallback switch (no attempt consumed)
+            // Call 2: fallback model 429 → attempt=1 → backoff with Retry-After:10
+            // Call 3: fallback model 429 → attempt=2 → backoff with Retry-After:10
+            // Call 4: fallback model 429 → attempt=3 → throw
+            $this->assertSame(4, $callCount, 'Expected 4 calls (default + 3 fallback retries with Retry-After)');
+        }
+    }
+
+    public function test429WithRetryAfterHttpDateFormatIsParsedCorrectly(): void
+    {
+        $callCount = 0;
+        $futureDate = gmdate('D, d M Y H:i:s \G\M\T', time() + 15);
+
+        $httpClient = new MockHttpClient(function () use (&$callCount, $futureDate): MockResponse {
+            $callCount++;
+
+            return new MockResponse('{"error":"Rate limited"}', [
+                'http_code' => 429,
+                'response_headers' => ['Retry-After' => $futureDate],
+            ]);
+        });
+
+        $client = $this->createClient($httpClient);
+
+        $this->expectException(OpenRouterException::class);
+        $this->expectExceptionMessageMatches('/rate limited after.*retries/i');
+
+        try {
+            $client->chat([['role' => 'user', 'content' => 'Hello']]);
+        } finally {
+            // Same 4-call pattern: default 429 → free switch, fallback ×3 → throw
+            $this->assertSame(4, $callCount, 'Expected 4 calls with HTTP-date Retry-After header');
+        }
+    }
+
+    public function test429WithRetryAfterExceedingCapReturnsMinusOne(): void
+    {
+        $callCount = 0;
+
+        $httpClient = new MockHttpClient(function () use (&$callCount): MockResponse {
+            $callCount++;
+
+            return new MockResponse('{"error":"Rate limited"}', [
+                'http_code' => 429,
+                'response_headers' => ['Retry-After' => '300'],
+            ]);
+        });
+
+        $client = $this->createClient($httpClient);
+
+        $this->expectException(OpenRouterException::class);
+        $this->expectExceptionMessageMatches('/exceeds.*cap/i');
+
+        try {
+            $client->chat([['role' => 'user', 'content' => 'Hello']]);
+        } finally {
+            // Call 1: default model 429 → free fallback switch
+            // Call 2: fallback model 429 → retryAfter=300 > cap(30) → -1 → immediate throw
+            $this->assertSame(2, $callCount, 'Expected 2 calls before cap-exceeded give-up');
+        }
+    }
+
+    public function test429WithoutRetryAfterHeaderUsesExponentialBackoff(): void
+    {
+        $callCount = 0;
+
+        $httpClient = new MockHttpClient(function () use (&$callCount): MockResponse {
+            $callCount++;
+
+            return new MockResponse('{"error":"Rate limited"}', ['http_code' => 429]);
+        });
+
+        $client = $this->createClient($httpClient);
+
+        $this->expectException(OpenRouterException::class);
+        $this->expectExceptionMessageMatches('/rate limited after.*retries/i');
+
+        try {
+            $client->chat([['role' => 'user', 'content' => 'Hello']]);
+        } finally {
+            // Same 4-call pattern: pure exponential backoff with no Retry-After
+            $this->assertSame(4, $callCount, 'Expected 4 calls with exponential backoff (no Retry-After)');
+        }
+    }
+
     // ─── Class Structure ─────────────────────────────────────────────
 
     public function testClassIsFinal(): void

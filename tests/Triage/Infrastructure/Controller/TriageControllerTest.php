@@ -6,6 +6,7 @@ namespace App\Tests\Triage\Infrastructure\Controller;
 
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Uid\Uuid;
 
 final class TriageControllerTest extends WebTestCase
@@ -24,9 +25,14 @@ final class TriageControllerTest extends WebTestCase
     /**
      * Register a user, log in, and return an authenticated KernelBrowser.
      */
-    private function createAuthenticatedClient(): KernelBrowser
+    private function createAuthenticatedClient(bool $disableReboot = false): KernelBrowser
     {
         $client = static::createClient();
+
+        if ($disableReboot) {
+            $client->disableReboot();
+        }
+
         $email = $this->uniqueEmail();
         $password = 'SecurePass123!';
 
@@ -335,5 +341,163 @@ final class TriageControllerTest extends WebTestCase
         $this->assertResponseStatusCodeSame(200);
         $data = json_decode($client->getResponse()->getContent(), true);
         $this->assertSame([], $data['data']);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Rate limiter: POST /api/triage/submit
+    // ─────────────────────────────────────────────────────────────────
+
+    public function testSubmitReturns429WhenRateLimitExceeded(): void
+    {
+        TestTriageAnalyzer::willReturnQuestionOnNextCall();
+        $client = $this->createAuthenticatedClient(disableReboot: true);
+
+        // Exhaust the 5 tokens
+        for ($i = 0; $i < 5; $i++) {
+            $client->jsonRequest('POST', '/api/triage/submit', [
+                'initialDescription' => 'I have a headache.',
+            ]);
+            $this->assertResponseStatusCodeSame(202, \sprintf('Submit %d should be accepted within rate limit', $i + 1));
+        }
+
+        // 6th request should be rate-limited
+        $client->jsonRequest('POST', '/api/triage/submit', [
+            'initialDescription' => 'I have a headache.',
+        ]);
+        $this->assertResponseStatusCodeSame(Response::HTTP_TOO_MANY_REQUESTS);
+
+        $data = \json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('429', $data['errors'][0]['status']);
+        $this->assertSame('RATE_LIMIT_EXCEEDED', $data['errors'][0]['code']);
+
+        $this->assertTrue($client->getResponse()->headers->has('Retry-After'));
+        $this->assertIsNumeric($client->getResponse()->headers->get('Retry-After'));
+        $this->assertSame('5', $client->getResponse()->headers->get('X-Rate-Limit-Limit'));
+        $this->assertSame('0', $client->getResponse()->headers->get('X-Rate-Limit-Remaining'));
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Rate limiter: POST /api/triage/{id}/answer
+    // ─────────────────────────────────────────────────────────────────
+
+    public function testAnswerReturns429WhenRateLimitExceeded(): void
+    {
+        TestTriageAnalyzer::willReturnQuestionOnNextCall();
+        $client = $this->createAuthenticatedClient(disableReboot: true);
+
+        // Create a submission in awaiting_answer status
+        $client->jsonRequest('POST', '/api/triage/submit', [
+            'initialDescription' => 'I have back pain.',
+        ]);
+        $this->assertResponseStatusCodeSame(202);
+        $submitData = \json_decode($client->getResponse()->getContent(), true);
+        $submissionId = $submitData['data']['id'];
+
+        // Exhaust the 5 answer tokens
+        // First answer succeeds (200), subsequent ones return 422 (wrong status)
+        // but rate limiter token is consumed on every request
+        for ($i = 0; $i < 5; $i++) {
+            $client->jsonRequest('POST', '/api/triage/' . $submissionId . '/answer', [
+                'content' => 'It hurts a lot.',
+            ]);
+
+            if ($i === 0) {
+                $this->assertResponseStatusCodeSame(200, 'First answer should succeed');
+            } else {
+                $this->assertResponseStatusCodeSame(422, \sprintf('Answer %d should fail status check but consume token', $i + 1));
+            }
+        }
+
+        // 6th answer should be rate-limited
+        $client->jsonRequest('POST', '/api/triage/' . $submissionId . '/answer', [
+            'content' => 'It hurts a lot.',
+        ]);
+        $this->assertResponseStatusCodeSame(Response::HTTP_TOO_MANY_REQUESTS);
+
+        $data = \json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('429', $data['errors'][0]['status']);
+        $this->assertSame('RATE_LIMIT_EXCEEDED', $data['errors'][0]['code']);
+
+        $this->assertTrue($client->getResponse()->headers->has('Retry-After'));
+        $this->assertIsNumeric($client->getResponse()->headers->get('Retry-After'));
+        $this->assertSame('5', $client->getResponse()->headers->get('X-Rate-Limit-Limit'));
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Rate limiter: within limit
+    // ─────────────────────────────────────────────────────────────────
+
+    public function testSubmitReturns202WithinRateLimit(): void
+    {
+        // Token bucket with array cache does not support time manipulation,
+        // so we verify that requests within the 5/min limit return 202.
+        TestTriageAnalyzer::willReturnQuestionOnNextCall();
+        $client = $this->createAuthenticatedClient(disableReboot: true);
+
+        for ($i = 0; $i < 5; $i++) {
+            $client->jsonRequest('POST', '/api/triage/submit', [
+                'initialDescription' => 'I have a headache.',
+            ]);
+            $this->assertResponseStatusCodeSame(202, \sprintf('Submit %d should return 202 within limit', $i + 1));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Rate limiter: per-user keys
+    // ─────────────────────────────────────────────────────────────────
+
+    public function testRateLimitUsesPerUserKeys(): void
+    {
+        TestTriageAnalyzer::willReturnQuestionOnNextCall();
+        $client = $this->createAuthenticatedClient(disableReboot: true);
+
+        // User A exhausts their submit limit
+        for ($i = 0; $i < 5; $i++) {
+            $client->jsonRequest('POST', '/api/triage/submit', [
+                'initialDescription' => 'I have a headache.',
+            ]);
+            $this->assertResponseStatusCodeSame(202, \sprintf('User A submit %d should succeed', $i + 1));
+        }
+
+        // Confirm User A is now rate-limited
+        $client->jsonRequest('POST', '/api/triage/submit', [
+            'initialDescription' => 'I have a headache.',
+        ]);
+        $this->assertResponseStatusCodeSame(Response::HTTP_TOO_MANY_REQUESTS, 'User A should be rate limited after 5 submits');
+
+        // Now register and authenticate as User B on the same client (same in-memory cache)
+        $emailB = $this->uniqueEmail();
+        $password = 'SecurePass123!';
+
+        $client->jsonRequest('POST', '/api/register', [
+            'email' => $emailB,
+            'password' => $password,
+            'password_confirmation' => $password,
+        ]);
+        $this->assertResponseStatusCodeSame(201);
+
+        // Verify email
+        $userRepo = $client->getContainer()->get(\App\User\Domain\Repository\UserRepository::class);
+        $userB = $userRepo->findByEmail($emailB);
+        $this->assertNotNull($userB);
+        $token = $userB->getEmailVerificationToken();
+        $this->assertNotNull($token);
+        $client->jsonRequest('GET', '/api/verify-email?token=' . $token);
+        $this->assertResponseStatusCodeSame(200);
+
+        // Login as User B
+        $client->jsonRequest('POST', '/api/login', [
+            'email' => $emailB,
+            'password' => $password,
+        ]);
+        $this->assertResponseStatusCodeSame(200);
+        $loginDataB = \json_decode($client->getResponse()->getContent(), true);
+        $client->setServerParameter('HTTP_Authorization', \sprintf('Bearer %s', $loginDataB['token']));
+
+        // User B's first submit should succeed — rate limit is per-user UUID, not global
+        $client->jsonRequest('POST', '/api/triage/submit', [
+            'initialDescription' => 'I have a headache.',
+        ]);
+        $this->assertResponseStatusCodeSame(202, 'User B should not be affected by User A\'s rate limit');
     }
 }

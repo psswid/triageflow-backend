@@ -23,4 +23,8 @@ when@test:
         cache:
             pools:
                 cache.rate_limiter:
-                    adapter: cache.adapter.array
+                    # Use filesystem instead of array to survive kernel's reset()
+                    # between requests. ArrayAdapter::reset() clears all stored
+                    # data, which breaks rate limiter state tracking across
+                    # requests in tests using disableReboot().
+                    adapter: cache.adapter.filesystem
